@@ -1,6 +1,6 @@
-# Screenshot Ingestion API
+# Hard9Stats MLB Playoffs
 
-FastAPI service for screenshot ingestion and report generation.
+Hard 9 Stats MLB Playoffs data in ingestion and report generation.
 
 ## API Endpoints
 

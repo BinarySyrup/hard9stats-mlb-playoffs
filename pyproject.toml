@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "h9s-mlb-2026-playoffs"
 version = "0.1.0"
-description = "FastAPI service for MLB playoff ingestion, merge, and HTML reporting"
+description = "ard 9 Stats MLB Playoffs data in ingestion and report generation."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
