@@ -1,0 +1,56 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Build/package artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Environment / local config
+.env
+.env.*
+!.env.example
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local runtime/log output
+*.log
+
+# Local ingested source data (ignore files; keep top-level sentinel only)
+data/ingested/**
+!data/ingested/
+!data/ingested/.keep
+
+# Local reports (ignore files except assets; keep top-level sentinel)
+data/reports/**
+!data/reports/
+!data/reports/.keep
+!data/reports/assets/
+!data/reports/assets/**
