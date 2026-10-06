@@ -46,11 +46,11 @@ Thumbs.db
 # Local ingested source data (ignore files; keep top-level sentinel only)
 data/ingested/**
 !data/ingested/
-!data/ingested/.keep
+!data/ingested/.gitkeep
 
 # Local reports (ignore files except assets; keep top-level sentinel)
 data/reports/**
 !data/reports/
-!data/reports/.keep
+!data/reports/.gitkeep
 !data/reports/assets/
 !data/reports/assets/**

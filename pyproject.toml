@@ -1,25 +1,25 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "h9s-mlb-2026-playoffs"
 version = "0.1.0"
-description = "ard 9 Stats MLB Playoffs data in ingestion and report generation."
+description = "Hard 9 Stats MLB Playoffs data in ingestion and report generation."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = "==3.14.*"
 dependencies = [
-  "fastapi>=0.116.1,<1.0",
-  "uvicorn[standard]>=0.35.0,<1.0",
-  "httpx>=0.28.1,<1.0",
-  "pydantic>=2.12.0",
-  "pydantic-settings>=2.10.1",
-  "python-multipart>=0.0.20",
+  "fastapi==0.141.1",
+  "uvicorn[standard]==0.54.0",
+  "httpx==0.28.1",
+  "pydantic==2.13.5",
+  "pydantic-settings==2.15.0",
+  "python-multipart==0.0.32",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.0",
+  "pytest==9.1.1",
 ]
 
 [tool.setuptools]

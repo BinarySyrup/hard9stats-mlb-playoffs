@@ -20,11 +20,11 @@ Use these series codes consistently in paths and APIs:
 
 ## Directory Conventions
 
-Use series-separated folders:
+Use series-first folders for ingested data:
 
-- `data/ingested/odds/<SERIES_TYPE>/`
-- `data/ingested/schedules/<SERIES_TYPE>/`
-- `data/ingested/scores/<SERIES_TYPE>/`
+- `data/ingested/<SERIES_TYPE>/odds/`
+- `data/ingested/<SERIES_TYPE>/schedules/`
+- `data/ingested/<SERIES_TYPE>/scores/`
 - `data/reports/<SERIES_TYPE>/`
 
 ## Report APIs (Current Contract)
@@ -33,9 +33,9 @@ Use series-separated folders:
 
 - No request body.
 - Reads inputs dynamically from:
-  - `data/ingested/odds/{series_type}`
-  - `data/ingested/scores/{series_type}`
-  - `data/ingested/schedules/{series_type}` (if present)
+  - `data/ingested/{series_type}/odds`
+  - `data/ingested/{series_type}/scores`
+  - `data/ingested/{series_type}/schedules` (if present)
 - Writes merged output to:
   - `data/reports/{series_type}/report-merged.json`
 - Keep only one merged JSON per series:

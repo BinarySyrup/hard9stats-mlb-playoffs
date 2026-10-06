@@ -181,6 +181,36 @@ def _infer_series_id_from_schedule(
     return candidates[0] if candidates else None
 
 
+def _resolve_odds_game_number(
+    game: dict[str, Any],
+    series_id: str,
+    away_full: str,
+    home_full: str,
+    schedule_rows: list[dict[str, Any]],
+    by_series_game: dict[tuple[str, int], dict[str, Any]],
+) -> int:
+    game_number = game.get("game_number")
+    if game_number is None:
+        game_number = game.get("series", {}).get("game")
+    if game_number is not None:
+        return int(game_number)
+
+    scheduled_numbers = {
+        int(row["game_number"])
+        for row in schedule_rows
+        if row.get("game_number") is not None
+        and (not row.get("series_id") or str(row["series_id"]) == series_id)
+        and _matches_team(row["away"], away_full)
+        and _matches_team(row["home"], home_full)
+    }
+    existing_numbers = {number for existing_series, number in by_series_game if existing_series == series_id}
+    remaining_numbers = scheduled_numbers - existing_numbers
+    if len(remaining_numbers) == 1:
+        return remaining_numbers.pop()
+
+    raise ValueError(f"Unable to determine game number for {away_full} at {home_full} in {series_id}.")
+
+
 def _build_tbd_merged_row(
     series_id: str,
     game_number: int,
@@ -319,9 +349,16 @@ def merge_report_data(odds_dir: Path, scores_dir: Path, schedules_dir: Path | No
         payload = _load_json(odds_file)
         for game in _extract_games(payload):
             series_id = str(game.get("series_id", "UNKNOWN_SERIES"))
-            game_number = int(game.get("game_number", 1))
             away_full = _team_name(game.get("away_team"))
             home_full = _team_name(game.get("home_team"))
+            game_number = _resolve_odds_game_number(
+                game=game,
+                series_id=series_id,
+                away_full=away_full,
+                home_full=home_full,
+                schedule_rows=schedule_rows,
+                by_series_game=by_series_game,
+            )
             away_abbr, away_short = _split_team_name(away_full)
             home_abbr, home_short = _split_team_name(home_full)
 
@@ -490,17 +527,17 @@ def main() -> None:
     )
     parser.add_argument(
         "--odds-dir",
-        default="data/ingested/odds/WCS",
+        default="data/ingested/WCS/odds",
         help="Directory containing odds JSON files.",
     )
     parser.add_argument(
         "--scores-dir",
-        default="data/ingested/scores/WCS",
+        default="data/ingested/WCS/scores",
         help="Directory containing score JSON files.",
     )
     parser.add_argument(
         "--schedules-dir",
-        default="data/ingested/schedules/WCS",
+        default="data/ingested/WCS/schedules",
         help="Optional directory containing schedule JSON files.",
     )
     parser.add_argument(
