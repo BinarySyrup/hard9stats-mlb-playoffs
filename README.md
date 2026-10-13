@@ -85,7 +85,7 @@ With the virtual environment active, start the development server from the repos
 python -m uvicorn app.main:app --reload
 ```
 
-The API is available at `http://127.0.0.1:8000`; interactive API documentation is at `http://127.0.0.1:8000/docs`. Press `Ctrl+C` in the terminal to stop the server.
+The API is available at `http://127.0.0.1:8000`; full API specs are available in the [Swagger UI](http://127.0.0.1:8000/docs). Press `Ctrl+C` in the terminal to stop the server.
 
 ## Ingestion Endpoint
 
@@ -160,81 +160,5 @@ Response includes:
 - `html_report_path`
 - `report_date`
 - `games_count`
-
-## API Spec: `POST /reports/{series_type}/merge-json`
-
-Path parameter:
-
-- `series_type` (string): `WCS`, `LDS`, `LCS`, or `WS`.
-
-Request body:
-
-- None.
-
-Success response (`200`):
-
-- `series_type` (string)
-- `report_date` (string, `YYYY-MM-DD`, generation date)
-- `games_count` (integer)
-- `merged_json_path` (string)
-
-Error responses:
-
-- `404` when required input directories (`odds` or `scores`) do not exist for the series type.
-- `422` for invalid path parameter shape.
-
-## API Spec: `POST /reports/{series_type}/generate-html`
-
-Path parameter:
-
-- `series_type` (string): `WCS`, `LDS`, `LCS`, or `WS`.
-
-Request body:
-
-- None.
-
-Success response (`200`):
-
-- `series_type` (string)
-- `report_date` (string, `YYYY-MM-DD`, generation date)
-- `games_count` (integer)
-- `merged_json_path` (string)
-- `html_report_path` (string)
-
-Error responses:
-
-- `404` when merged JSON does not exist for the series type.
-- `422` for invalid path parameter shape.
-
-
-## API Spec: `GET /reports/{series_type}/status`
-
-Path parameter:
-
-- `series_type` (string): `WCS`, `LDS`, `LCS`, or `WS`.
-
-Behavior:
-
-- Checks `data/reports/<SERIES_TYPE>/report-merged.json`.
-- Finds the most recently modified file matching `data/reports/<SERIES_TYPE>/report-*.html`.
-
-Success response (`200`):
-
-- `series_type` (string)
-- `merged_json_exists` (boolean)
-- `merged_json_path` (string)
-- `merged_json_modified_at` (string | null, ISO-8601)
-- `latest_html_exists` (boolean)
-- `latest_html_path` (string | null)
-- `latest_html_modified_at` (string | null, ISO-8601)
-
-Example:
-
-```bash
-curl -X GET "http://127.0.0.1:8000/reports/WCS/status" \
-  -H "accept: application/json"
-```
-
-
 
 

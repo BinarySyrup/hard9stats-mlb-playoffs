@@ -218,6 +218,7 @@ def _build_tbd_merged_row(
     home_full: str,
     league: str | None,
     schedule_row: dict[str, Any] | None,
+    score_row: dict[str, Any] | None,
 ) -> dict[str, Any]:
     away_abbr, away_short = _split_team_name(away_full)
     home_abbr, home_short = _split_team_name(home_full)
@@ -263,8 +264,16 @@ def _build_tbd_merged_row(
             },
         },
         "score": {
-            "away": {"runs": None, "hits": None, "errors": None},
-            "home": {"runs": None, "hits": None, "errors": None},
+            "away": {
+                "runs": score_row.get("away", {}).get("runs") if score_row else None,
+                "hits": score_row.get("away", {}).get("hits") if score_row else None,
+                "errors": score_row.get("away", {}).get("errors") if score_row else None,
+            },
+            "home": {
+                "runs": score_row.get("home", {}).get("runs") if score_row else None,
+                "hits": score_row.get("home", {}).get("hits") if score_row else None,
+                "errors": score_row.get("home", {}).get("errors") if score_row else None,
+            },
         },
         "schedule": {
             "venue": schedule_row.get("venue") if schedule_row else None,
@@ -471,6 +480,7 @@ def merge_report_data(odds_dir: Path, scores_dir: Path, schedules_dir: Path | No
             away_full = base["away_full"] if base else schedule_row["away"]
             home_full = base["home_full"] if base else schedule_row["home"]
             league = base.get("league") if base else None
+            score = _match_score(score_by_key, away_full, home_full, int(schedule_row["game_number"]))
 
             by_series_game[key] = _build_tbd_merged_row(
                 series_id=series_id,
@@ -479,6 +489,7 @@ def merge_report_data(odds_dir: Path, scores_dir: Path, schedules_dir: Path | No
                 home_full=home_full,
                 league=league,
                 schedule_row=schedule_row,
+                score_row=score,
             )
             continue
 
