@@ -46,6 +46,16 @@ def _score_markup(game_data: dict[str, Any], side: str) -> str:
     return f'<span class="score-value">{escape(str(runs))}</span>'
 
 
+def _as_decimal(value: Any) -> Decimal | None:
+    if value is None or value == "":
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return parsed if parsed.is_finite() else None
+
+
 def _spread_line_suffix(trend: str, line: Any) -> str:
     if trend != "Favorite" or line is None or line == "":
         return ""
@@ -103,14 +113,12 @@ def _total_runs_difference(game_data: dict[str, Any]) -> Decimal | None:
     away_runs = (score.get("away") or {}).get("runs")
     home_runs = (score.get("home") or {}).get("runs")
     total_line = ((odds.get("total_runs") or {}).get("line"))
-    if any(value is None or value == "" for value in (away_runs, home_runs, total_line)):
+    away_value = _as_decimal(away_runs)
+    home_value = _as_decimal(home_runs)
+    line_value = _as_decimal(total_line)
+    if away_value is None or home_value is None or line_value is None:
         return None
-
-    try:
-        difference = Decimal(str(away_runs)) + Decimal(str(home_runs)) - Decimal(str(total_line))
-    except (InvalidOperation, TypeError, ValueError):
-        return None
-    return difference if difference.is_finite() else None
+    return away_value + home_value - line_value
 
 
 def _total_runs_covering_side(difference: Decimal | None) -> str | None:
@@ -143,6 +151,159 @@ def _has_odds_data(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().upper() not in ("", "TBD")
     return value is not None
+
+
+def _is_final_game(game_data: dict[str, Any]) -> bool:
+    status = str(game_data.get("status") or "").strip().casefold()
+    return status.startswith("final") or status in {"complete", "completed", "finished", "game over", "ended"}
+
+
+def _final_score(game_data: dict[str, Any]) -> tuple[Decimal, Decimal] | None:
+    if not _is_final_game(game_data):
+        return None
+    score = game_data.get("score") or {}
+    away_runs = _as_decimal((score.get("away") or {}).get("runs"))
+    home_runs = _as_decimal((score.get("home") or {}).get("runs"))
+    if away_runs is None or home_runs is None:
+        return None
+    return away_runs, home_runs
+
+
+def _moneyline_outcome(
+    game_data: dict[str, Any], final_score: tuple[Decimal, Decimal] | None
+) -> str | None:
+    if final_score is None:
+        return None
+    moneyline = (game_data.get("odds") or {}).get("moneyline") or {}
+    away_favorite = (moneyline.get("away") or {}).get("trend") == "Favorite"
+    home_favorite = (moneyline.get("home") or {}).get("trend") == "Favorite"
+    if away_favorite == home_favorite:
+        return None
+    away_runs, home_runs = final_score
+    favorite_runs, underdog_runs = (away_runs, home_runs) if away_favorite else (home_runs, away_runs)
+    if favorite_runs > underdog_runs:
+        return "favorite"
+    if favorite_runs < underdog_runs:
+        return "underdog"
+    return None
+
+
+def _spread_favorite_outcome(
+    game_data: dict[str, Any], final_score: tuple[Decimal, Decimal] | None
+) -> str | None:
+    if final_score is None:
+        return None
+    spread = (game_data.get("odds") or {}).get("spread") or {}
+    away_favorite = (spread.get("away") or {}).get("trend") == "Favorite"
+    home_favorite = (spread.get("home") or {}).get("trend") == "Favorite"
+    if away_favorite == home_favorite:
+        return None
+    favorite_market = spread.get("away" if away_favorite else "home") or {}
+    favorite_line = _as_decimal(favorite_market.get("line"))
+    if favorite_line is None:
+        return None
+    away_runs, home_runs = final_score
+    favorite_runs, underdog_runs = (away_runs, home_runs) if away_favorite else (home_runs, away_runs)
+    margin = favorite_runs + favorite_line - underdog_runs
+    if margin > 0:
+        return "covers"
+    if margin < 0:
+        return "no_covers"
+    return "pushes"
+
+
+def _total_runs_outcome(
+    game_data: dict[str, Any], final_score: tuple[Decimal, Decimal] | None
+) -> str | None:
+    if final_score is None:
+        return None
+    difference = _total_runs_difference(game_data)
+    if difference is None:
+        return None
+    if difference > 0:
+        return "overs"
+    if difference < 0:
+        return "unders"
+    return "pushes"
+
+
+def _summarize_betting(games: Any) -> dict[str, dict[str, int]]:
+    summary = {
+        "moneyline": {"favorite": 0, "underdog": 0},
+        "spread": {"covers": 0, "no_covers": 0, "pushes": 0},
+        "total_runs": {"overs": 0, "unders": 0, "pushes": 0},
+    }
+    outcomes = {
+        "moneyline": _moneyline_outcome,
+        "spread": _spread_favorite_outcome,
+        "total_runs": _total_runs_outcome,
+    }
+    for game_data in games:
+        odds = game_data.get("odds") or {}
+        final_score = _final_score(game_data)
+        for market_name, outcome_for in outcomes.items():
+            if not _has_odds_data(odds.get(market_name)):
+                continue
+            outcome = outcome_for(game_data, final_score)
+            if outcome is not None:
+                summary[market_name][outcome] += 1
+    return summary
+
+
+def _count_phrase(count: int, singular: str, plural: str) -> str:
+    return f"{count} {singular if count == 1 else plural}"
+
+
+def _render_betting_summary(
+    games: Any,
+    heading: str,
+    heading_level: int,
+    include_explanation: bool = False,
+) -> str:
+    summary = _summarize_betting(games)
+    heading_tag = f"h{heading_level}"
+    explanation = (
+        '<p class="betting-summary-note">Moneyline counts wins by the listed favorite versus the underdog. '
+        'Spread counts covers, no covers, and pushes for the listed spread favorite. '
+        'Total Runs compares combined final runs with the line to determine Over, Under, or a push. '
+        'Only games with final scores are counted.</p>'
+        if include_explanation
+        else ""
+    )
+    moneyline = summary["moneyline"]
+    spread = summary["spread"]
+    total_runs = summary["total_runs"]
+    return (
+        f'<div class="betting-summary"><{heading_tag}>{heading}</{heading_tag}>'
+        f'{explanation}'
+        '<div class="betting-summary-grid">'
+        '<div class="betting-summary-item"><h3>Moneyline</h3>'
+        '<div class="betting-outcomes betting-outcomes-two">'
+        '<div class="betting-outcome"><span class="betting-outcome-label">Favorite<br>cover</span>'
+        f'<span class="betting-outcome-count">{moneyline["favorite"]}</span></div>'
+        '<div class="betting-outcome"><span class="betting-outcome-label">Underdog<br>cover</span>'
+        f'<span class="betting-outcome-count">{moneyline["underdog"]}</span></div>'
+        '</div></div>'
+        '<div class="betting-summary-item"><h3>Spread</h3>'
+        '<div class="betting-outcomes betting-outcomes-three">'
+        '<div class="betting-outcome"><span class="betting-outcome-label">Favorite<br>cover</span>'
+        f'<span class="betting-outcome-count">{spread["covers"]}</span></div>'
+        '<div class="betting-outcome"><span class="betting-outcome-label">Underdog<br>cover</span>'
+        f'<span class="betting-outcome-count">{spread["no_covers"]}</span></div>'
+        '<div class="betting-outcome"><span class="betting-outcome-label">Push</span>'
+        f'<span class="betting-outcome-count">{spread["pushes"]}</span></div>'
+        '</div></div>'
+        '<div class="betting-summary-item"><h3>Total Runs</h3>'
+        '<div class="betting-outcomes betting-outcomes-three">'
+        '<div class="betting-outcome"><span class="betting-outcome-label">Under</span>'
+        f'<span class="betting-outcome-count">{total_runs["unders"]}</span></div>'
+        '<div class="betting-outcome"><span class="betting-outcome-label">Push</span>'
+        f'<span class="betting-outcome-count">{total_runs["pushes"]}</span></div>'
+        '<div class="betting-outcome"><span class="betting-outcome-label">Over</span>'
+        f'<span class="betting-outcome-count">{total_runs["overs"]}</span></div>'
+        '</div></div>'
+        '</div></div>'
+    )
 
 
 def _render_row(
@@ -254,6 +415,7 @@ def _render_game_block(section_id: str, series_games: dict[int, dict[str, Any]])
         return ""
 
     joined_rows = "\n".join(rows)
+    betting_summary = _render_betting_summary(series_games.values(), "Series Betting Totals", 3)
 
     return (
         f'<section class="game" aria-labelledby="{section_id}">\n'
@@ -266,6 +428,7 @@ def _render_game_block(section_id: str, series_games: dict[int, dict[str, Any]])
         f'        {joined_rows}\n'
         '        </tbody>\n'
         '    </table>\n'
+        f'    {betting_summary}\n'
         '</section>'
     )
 
@@ -290,6 +453,11 @@ def render_report_html(merged_payload: dict[str, Any]) -> str:
             sections.append(section_html)
 
     joined_sections = "\n\n    ".join(sections)
+    overall_summary = _render_betting_summary(
+        merged_payload["games"],
+        "Overall Betting Totals",
+        2,
+    )
     report_type = "Wild Card Series"
 
     return f"""<!DOCTYPE html>
@@ -328,6 +496,21 @@ def render_report_html(merged_payload: dict[str, Any]) -> str:
         .game {{ margin: 0 0 14px; padding: 16px; background: var(--h9s-white); border: 1px solid var(--border); border-radius: 10px; break-inside: avoid; }}
         .top {{ display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }}
         h2 {{ margin: 0; font-size: 18px; font-weight: 500; color: var(--h9s-black); }}
+        .betting-summary {{ margin-top: 14px; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }}
+        main > .betting-summary {{ margin-bottom: 14px; }}
+        .betting-summary > h2, .betting-summary > h3 {{ margin: 0 0 10px; font-size: 16px; font-weight: 500; color: var(--h9s-black); }}
+        .betting-summary-note {{ margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }}
+        .betting-summary-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }}
+        .betting-summary-item {{ padding: 10px; background: var(--h9s-white); border: 1px solid var(--border); border-radius: 8px; break-inside: avoid; }}
+        .betting-summary-item h3 {{ margin: 0 0 4px; color: var(--h9s-green-dark); font-size: 13px; font-weight: 500; }}
+        .betting-summary-item p {{ margin: 0; color: var(--h9s-black); font-size: 12px; line-height: 1.4; }}
+        .betting-outcomes {{ display: grid; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }}
+        .betting-outcomes-two {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+        .betting-outcomes-three {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
+        .betting-outcome {{ display: flex; min-width: 0; min-height: 58px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 7px 4px; text-align: center; }}
+        .betting-outcome + .betting-outcome {{ border-left: 1px solid var(--border); }}
+        .betting-outcome-label {{ color: var(--muted); font-size: 10px; font-weight: 500; letter-spacing: .03em; line-height: 1.2; text-transform: uppercase; }}
+        .betting-outcome-count {{ color: var(--h9s-green-dark); font-size: 20px; font-weight: 500; line-height: 1; }}
         table {{ width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }}
         th, td {{ padding: 8px 7px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }}
         th {{ background: var(--surface); color: var(--h9s-green-dark); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }}
@@ -360,6 +543,9 @@ def render_report_html(merged_payload: dict[str, Any]) -> str:
             body {{ padding: 0; }}
             main {{ max-width: none; }}
         }}
+        @media (max-width: 700px) {{
+            .betting-summary-grid {{ grid-template-columns: 1fr; }}
+        }}
     </style>
 </head>
 <body>
@@ -372,6 +558,8 @@ def render_report_html(merged_payload: dict[str, Any]) -> str:
             <p class=\"sub\">{report_date_long}</p>
         </div>
     </header>
+
+    {overall_summary}
 
     {joined_sections}
 
