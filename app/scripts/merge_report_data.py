@@ -54,14 +54,20 @@ def _build_score_lookup(scores_files: list[Path]) -> dict[tuple[str, str, int], 
         for game in _extract_games(payload):
             away = _team_name(game.get("away_team"))
             home = _team_name(game.get("home_team"))
-            game_number = int(game.get("series", {}).get("game", 1))
+            series = game.get("series")
+            if not isinstance(series, dict):
+                series = {}
+            game_number = series.get("game")
+            if game_number is None:
+                continue
+            game_number = int(game_number)
             lookup[(_norm_team(away), _norm_team(home), game_number)] = {
                 "file": str(score_file).replace("\\", "/"),
                 "date": game_date,
                 "status": game.get("status", ""),
                 "away": game.get("away_team", {}),
                 "home": game.get("home_team", {}),
-                "series": game.get("series", {}),
+                "series": series,
             }
     return lookup
 
@@ -71,18 +77,26 @@ def _build_schedule_rows(schedule_files: list[Path]) -> list[dict[str, Any]]:
     for schedule_file in sorted(schedule_files):
         payload = _load_json(schedule_file)
         for game in _extract_games(payload):
+            series = game.get("series")
+            if not isinstance(series, dict):
+                series = {}
+            game_number = game.get("game_number")
+            if game_number is None:
+                game_number = series.get("game")
+            if game_number is None:
+                continue
             rows.append(
                 {
                     "file": str(schedule_file).replace("\\", "/"),
                     "away": _team_name(game.get("away_team")),
                     "home": _team_name(game.get("home_team")),
-                    "game_number": int(game.get("game_number", game.get("series", {}).get("game", 1))),
+                    "game_number": int(game_number),
                     "series_id": game.get("series_id"),
-                    "league": game.get("series", {}).get("league") or game.get("league"),
+                    "league": series.get("league") or game.get("league"),
                     "start_time": game.get("start_time"),
                     "status": game.get("status"),
                     "venue": game.get("venue"),
-                    "summary": game.get("series", {}).get("summary"),
+                    "summary": series.get("summary"),
                 }
             )
     return rows

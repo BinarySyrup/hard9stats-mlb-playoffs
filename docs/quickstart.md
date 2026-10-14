@@ -4,6 +4,9 @@
 
 - Python 3.14.
 - The checked-in dependency lock files target Windows with CPython 3.14. For another operating system, use a lock resolved for that platform.
+- Ollama installed on the machine that will run inference, with enough RAM/VRAM and disk space for the selected model. Actual resource needs vary with the model build, quantization, and context length.
+- The Ollama server must be running and reachable from the app. By default, the app connects to `http://localhost:11434`.
+- The configured model must be downloaded locally. The default is `gemma4:26b`.
 
 ## Install
 
@@ -23,7 +26,13 @@ For macOS or Linux, create and activate a Python 3.14 virtual environment, then 
 
 ## Configure screenshot ingestion
 
-Edit `.env` and set `AZURE_AGENT_API_URL` and `AZURE_AGENT_MODEL`. Set `AZURE_AGENT_API_KEY` if the agent endpoint requires it. See [Configuration](configuration.md) for all supported settings. Health and report endpoints do not require agent credentials.
+Install Ollama using the instructions for your operating system, start its server, and pull the selected model:
+
+```bash
+ollama pull gemma4:26b
+```
+
+Confirm the model is present with `ollama list`. Edit `.env` and set `OLLAMA_BASE_URL` if Ollama is not listening at `http://localhost:11434`; the app process must be able to reach that address. `OLLAMA_MODEL` defaults to `gemma4:26b`. The repository must include the two prompt files in `data/llm-prompts`. Health and report endpoints do not require Ollama. See [Configuration](configuration.md) for all settings.
 
 ## Start the development server
 
@@ -41,11 +50,22 @@ The API reference is at `http://127.0.0.1:8000/docs`. Stop the development serve
 
 ## Ingest a screenshot
 
-Send an image as multipart form data in the `image` field:
+For report-ready odds JSON, send the image with `data_type=odds` and its series code:
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
-  -F "image=@./sample-screenshot.png"
+  -F "image=@./odds-screenshot.png" \
+  -F "data_type=odds" \
+  -F "series_type=WCS"
 ```
 
-The response includes the extracted data and the path where its JSON envelope was saved. The uploaded image itself is not saved by this service.
+For a scorecard or schedule image, use the combined prompt case:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
+  -F "image=@./scores-schedule-screenshot.png" \
+  -F "data_type=scores-schedules" \
+  -F "series_type=WCS"
+```
+
+`data_type` and `series_type` are required for every screenshot. Odds JSON is saved under `data/ingested/{SERIES}/odds/`. The combined scores/schedules JSON is saved under both `scores/` and `schedules/` for the report merger. The response includes all saved paths. Uploaded images are not retained.

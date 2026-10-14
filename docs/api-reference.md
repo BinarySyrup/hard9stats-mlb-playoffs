@@ -12,16 +12,18 @@ Returns `{"status":"ok"}`. This is a basic process health response; it does not 
 
 ### `POST /ingest/screenshot`
 
-Send `multipart/form-data` with an image in the required `image` field. The configured agent extracts data; the service saves a JSON envelope under `INGESTED_OUTPUT_DIR` (default `data/ingested`).
+Send `multipart/form-data` with an image in the required `image` field, a required `data_type`, and a required `series_type`. The selected type determines which prompt and JSON schema are used.
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
-  -F "image=@./sample-screenshot.png"
+  -F "image=@./odds-screenshot.png" \
+  -F "data_type=odds" \
+  -F "series_type=WCS"
 ```
 
-The success response includes `request_id`, `created_at`, `source_image_name`, `data`, `warnings`, `confidence`, `agent_metadata`, and `saved_file_path`. Only the JSON envelope is stored; the image is not retained by the service.
+`data_type` accepts `odds` or `scores-schedules`; `series_type` accepts `WCS`, `LDS`, `LCS`, or `WS`. The service selects the matching prompt from `data/llm-prompts` and supplies its Pydantic-derived JSON schema to Ollama. Odds output is saved to `data/ingested/{SERIES}/odds/`; scores/schedules output is saved to both `scores/` and `schedules/`. The success response includes `request_id`, `created_at`, `source_image_name`, `data`, `warnings`, `confidence`, `agent_metadata`, `extraction_type`, `series_type`, `saved_file_path`, and `saved_file_paths`. Uploaded images are not retained.
 
-Common errors: `400` for a non-image or empty upload; `422` when extracted confidence data fails schema validation; `502` for an upstream failure or unreadable agent response; `504` for an agent timeout; `500` when required agent configuration is missing.
+Common errors: `400` for a non-image or empty upload; `422` for missing or unsupported `data_type`/`series_type`; `500` when a required prompt file or Ollama configuration is missing; `502` when Ollama is unreachable or returns an unusable response, including output that fails schema validation; `504` when the local inference request times out.
 
 ## Merge report data
 

@@ -1,13 +1,120 @@
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
+ConfidenceScore = Annotated[float, Field(ge=0, le=1)]
+
+
 class ConfidencePayload(BaseModel):
     overall: float | None = None
     fields: dict[str, float] = Field(default_factory=dict)
+
+
+class StructuredExtraction(BaseModel):
+    model_config = {"extra": "forbid"}
+
+
+class ExtractionConfidence(StructuredExtraction):
+    overall: float = Field(ge=0, le=1)
+    fields: dict[str, ConfidenceScore]
+
+
+class ExtractionAgentMetadata(StructuredExtraction):
+    migrated_from_legacy_schema: bool
+
+
+class OddsTeam(StructuredExtraction):
+    name: str
+    pitcher: str | None
+
+
+class OddsRunLine(StructuredExtraction):
+    line: float | None
+    odds: float | None
+
+
+class AwayTotal(StructuredExtraction):
+    line: float | None
+    over_odds: float | None
+
+
+class HomeTotal(StructuredExtraction):
+    line: float | None
+    under_odds: float | None
+
+
+class AwayOdds(StructuredExtraction):
+    run_line: OddsRunLine
+    total: AwayTotal
+    moneyline: float | None
+
+
+class HomeOdds(StructuredExtraction):
+    run_line: OddsRunLine
+    total: HomeTotal
+    moneyline: float | None
+
+
+class GameOdds(StructuredExtraction):
+    away: AwayOdds
+    home: HomeOdds
+
+
+class OddsGame(StructuredExtraction):
+    away_team: OddsTeam
+    home_team: OddsTeam
+    start_time: str | None
+    odds: GameOdds
+    series_id: str | None
+    game_number: int | None
+    league: str | None
+
+
+class OddsData(StructuredExtraction):
+    games: list[OddsGame]
+
+
+class OddsExtraction(StructuredExtraction):
+    request_id: str | None
+    created_at: str | None
+    source_image_name: str
+    data: OddsData
+    warnings: list[str]
+    confidence: ExtractionConfidence
+    agent_metadata: ExtractionAgentMetadata
+
+
+class ScoreTeam(StructuredExtraction):
+    name: str
+    record: str | None
+    split_record: str | None
+    runs: int | None
+    hits: int | None
+    errors: int | None
+
+
+class ScoreSeries(StructuredExtraction):
+    league: str | None
+    game: int | None
+    summary: str | None
+
+
+class ScoreGame(StructuredExtraction):
+    status: str | None
+    away_team: ScoreTeam
+    home_team: ScoreTeam
+    series: ScoreSeries | None
+
+
+class ScoresSchedulesExtraction(StructuredExtraction):
+    date: str | None
+    games: list[ScoreGame]
+    warnings: list[str]
+    confidence: ExtractionConfidence
+    agent_metadata: ExtractionAgentMetadata
 
 
 class IngestionEnvelope(BaseModel):
@@ -22,6 +129,9 @@ class IngestionEnvelope(BaseModel):
 
 class IngestionResponse(IngestionEnvelope):
     saved_file_path: str
+    saved_file_paths: list[str] = Field(default_factory=list)
+    extraction_type: str
+    series_type: str
 
 
 class MergeReportResponse(BaseModel):

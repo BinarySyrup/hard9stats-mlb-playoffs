@@ -6,14 +6,10 @@ Settings can be supplied through environment variables or a local `.env` file in
 | --- | --- | --- |
 | `APP_NAME` | `Hard9Stats MLB Playoffs API` | FastAPI application title. |
 | `APP_ENV` | `dev` | Environment label; the app does not currently change behavior based on this value. |
-| `INGESTED_OUTPUT_DIR` | `data/ingested` | Directory for screenshot-ingestion JSON envelopes. |
-| `AZURE_AGENT_API_URL` | Empty | Required agent endpoint URL for screenshot ingestion. |
-| `AZURE_AGENT_API_KEY` | Empty | Optional API key; send it when required by the endpoint. |
-| `AZURE_AGENT_MODEL` | Empty | Required model identifier for screenshot ingestion. |
-| `AZURE_AGENT_API_VERSION` | Empty | Optional API version query parameter. |
-| `AGENT_EXTRACTION_PROMPT` | Prompt from `.env.example` | Instructions sent with each screenshot. The expected output is JSON with `data`, `warnings`, and `confidence`. |
-| `AGENT_TIMEOUT_SECONDS` | `45` | Timeout for the upstream agent request. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server base URL. The app sends chat requests to `/api/chat`. |
+| `OLLAMA_MODEL` | `gemma4:26b` | Local model name used for screenshot extraction. |
+| `AGENT_TIMEOUT_SECONDS` | `45` | Timeout for the Ollama inference request. |
 
-Screenshot ingestion requires both `AZURE_AGENT_API_URL` and `AZURE_AGENT_MODEL`. Missing either prevents ingestion; other endpoints do not call the agent.
+Screenshot ingestion requires Ollama to be running and the configured model to be available locally. Pull the model with `ollama pull gemma4:26b` or the corresponding configured model name. Every screenshot request must specify a data type and series type. Odds and scores/schedules ingestion reads its prompts from `data/llm-prompts/mlb-data-ingestion-odds.txt` and `data/llm-prompts/mlb-data-ingestion-schedules-scores.txt`; keep these files available in deployments.
 
-`INGESTED_OUTPUT_DIR` applies to screenshot-ingestion envelopes. Report merge inputs and report outputs use the `data/` paths described in [Report data and workflow](reporting.md).
+The response schemas are `OddsExtraction` and `ScoresSchedulesExtraction` in `app/models/contracts.py`. The app passes the selected model's JSON schema to Ollama and validates its response with Pydantic. See the [Ollama structured outputs guide](https://docs.ollama.com/capabilities/structured-outputs#python) for the schema pattern. Report input and output paths use the `data/` layout described in [Report data and workflow](reporting.md).

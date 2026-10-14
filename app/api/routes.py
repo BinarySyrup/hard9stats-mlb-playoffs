@@ -2,8 +2,9 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
-from fastapi import APIRouter, File, HTTPException, Path as ApiPath, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Path as ApiPath, UploadFile, status
 from pydantic import ValidationError
 
 from app.models.contracts import (
@@ -52,7 +53,11 @@ async def health_check() -> HealthResponse:
 
 
 @router.post("/ingest/screenshot", response_model=IngestionResponse)
-async def ingest_screenshot(image: UploadFile = File(...)) -> IngestionResponse:
+async def ingest_screenshot(
+    image: UploadFile = File(...),
+    data_type: Literal["odds", "scores-schedules"] = Form(...),
+    series_type: str = Form(...),
+) -> IngestionResponse:
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -66,19 +71,28 @@ async def ingest_screenshot(image: UploadFile = File(...)) -> IngestionResponse:
             detail="Uploaded image file is empty.",
         )
 
+    series_key = _series_key(series_type)
+    if series_key not in {"WCS", "LDS", "LCS", "WS"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="series_type must be WCS, LDS, LCS, or WS.",
+        )
+
     try:
         service = IngestionService()
-        envelope, saved_file_path = await service.ingest_screenshot(
+        envelope, saved_file_paths = await service.ingest_screenshot(
             source_image_name=image.filename or "uploaded_image",
             image_bytes=image_bytes,
             content_type=image.content_type,
+            extraction_type=data_type,
+            series_type=series_key,
         )
     except AgentClientError as exc:
         message = str(exc)
         status_code = status.HTTP_502_BAD_GATEWAY
         if "timed out" in message.lower():
             status_code = status.HTTP_504_GATEWAY_TIMEOUT
-        if "missing azure_agent" in message.lower():
+        if "missing ollama" in message.lower() or "prompt file" in message.lower():
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         raise HTTPException(status_code=status_code, detail=message) from exc
     except ValidationError as exc:
@@ -87,7 +101,13 @@ async def ingest_screenshot(image: UploadFile = File(...)) -> IngestionResponse:
             detail=f"Model output schema validation failed: {exc}",
         ) from exc
 
-    return IngestionResponse(**envelope.model_dump(), saved_file_path=saved_file_path)
+    return IngestionResponse(
+        **envelope.model_dump(),
+        saved_file_path=saved_file_paths[0],
+        saved_file_paths=saved_file_paths,
+        extraction_type=data_type,
+        series_type=series_key,
+    )
 
 
 @router.post(

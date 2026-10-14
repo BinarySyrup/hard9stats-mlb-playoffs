@@ -17,6 +17,9 @@ Run the service from the repository root. Report paths are relative to its worki
 
 ```text
 data/
+  llm-prompts/
+    mlb-data-ingestion-odds.txt
+    mlb-data-ingestion-schedules-scores.txt
   ingested/
     WCS/
       odds/
@@ -30,9 +33,9 @@ data/
 
 Repeat the series folders for `LDS`, `LCS`, and `WS`. Place source `.json` files directly in each input folder. The merge operation requires the odds and scores directories to exist; the schedules directory is optional.
 
-Each source file should contain a `games` array at its root or under `data.games`. Odds records need team names, a series identifier, moneyline and run-line values for both teams, and total-run data. Score and schedule records are joined to odds by team names and game number; schedule records can also provide game number, start time, venue, status, and series metadata.
+Screenshot ingestion uses the prompt files in `data/llm-prompts`. Select `data_type=odds` or `data_type=scores-schedules` and provide a `series_type` when calling `POST /ingest/screenshot`. Odds JSON is written to the series' `odds/` folder; the combined score/schedule JSON is written to both `scores/` and `schedules/` so the merger can use it for each role. These files contain `games` at the root or under `data.games` and are schema-validated before saving.
 
-Screenshot-ingestion JSON is saved separately to `INGESTED_OUTPUT_DIR`. It is not automatically split into odds, schedule, or score files.
+Every screenshot-ingestion request requires a data type and series type so its output is validated with the matching schema and written directly to the report input folders.
 
 ## Merge, then generate
 
@@ -50,4 +53,4 @@ The merge can retain scheduled games that have no odds and fill missing odds wit
 
 The HTML renderer omits games with no odds at all. When some odds exist, it renders the row and displays missing values as `TBD`. Generated HTML uses the generation date in its filename and report header. Generating again on the same server-local date writes to the same filename.
 
-Runtime data files are ignored by Git. Back up or persist `data/` separately if the artifacts must survive redeployments.
+Ingested files and generated reports are runtime data ignored by Git. The prompt files in `data/llm-prompts/` are application inputs and should be kept with the deployed source. Back up or persist the runtime folders separately if artifacts must survive redeployments.
