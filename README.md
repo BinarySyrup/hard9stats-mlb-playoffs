@@ -87,6 +87,24 @@ python -m uvicorn app.main:app --reload
 
 The API is available at `http://127.0.0.1:8000`; full API specs are available in the [Swagger UI](http://127.0.0.1:8000/docs). Press `Ctrl+C` in the terminal to stop the server.
 
+### Production Deployment
+
+Install the application from the repository root after installing the lock file resolved for the deployment platform:
+
+```bash
+python -m pip install --no-deps .
+```
+
+Start Uvicorn without development reload mode:
+
+```bash
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Run the service with the repository root as its working directory and mount `data/` on persistent storage. Report endpoints use paths relative to that directory.
+
+The API does not provide authentication or rate limiting. Before exposing it to clients, put it behind an authenticated gateway that enforces HTTPS and request-size limits. Screenshot uploads are currently read fully into memory. Supply Azure agent credentials through deployment secrets, not source control.
+
 ## Ingestion Endpoint
 
 `POST /ingest/screenshot` accepts a screenshot image, sends it to an Azure AI Foundry-compatible agent endpoint, and stores the parsed JSON result in `data/ingested/`.

@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    app_name: str = Field(default="Screenshot Ingestion API", alias="APP_NAME")
+    app_name: str = Field(default="Hard9Stats MLB Playoffs API", alias="APP_NAME")
     app_env: str = Field(default="dev", alias="APP_ENV")
     ingested_output_dir: str = Field(default="data/ingested", alias="INGESTED_OUTPUT_DIR")
 
