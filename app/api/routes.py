@@ -109,9 +109,10 @@ async def merge_report_json(
 ) -> MergeReportResponse:
     series_key = _series_key(series_type)
 
-    odds_dir = Path(f"data/ingested/odds/{series_key}")
-    scores_dir = Path(f"data/ingested/scores/{series_key}")
-    schedules_dir = Path(f"data/ingested/schedules/{series_key}")
+    series_ingested_dir = Path("data/ingested") / series_key
+    odds_dir = series_ingested_dir / "odds"
+    scores_dir = series_ingested_dir / "scores"
+    schedules_dir = series_ingested_dir / "schedules"
 
     if not odds_dir.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Odds directory not found: {odds_dir}")
