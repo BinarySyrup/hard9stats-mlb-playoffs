@@ -31,13 +31,13 @@ Common errors: `400` for a non-image or empty upload; `422` for missing or unsup
 
 ### `POST /reports/{series_type}/merge-json`
 
-Reads odds JSON files from `data/ingested/{SERIES}/odds/`, scores from `data/ingested/{SERIES}/scores/`, and schedules from `data/ingested/{SERIES}/schedules/`. The odds directory is required; scores and schedules are optional. The response includes `series_type`, `report_date`, `games_count`, and `merged_json_path`.
+Reads every JSON file matching `data/ingested/{SERIES}/*/*.json`, groups files by their immediate subdirectory, and sends the grouped inputs with `data/llm-prompts/mlb-data-merge.txt` to Ollama. The model response is saved to `data/reports/{SERIES}/report-merged.json` without schema validation. The response includes `series_type`, `report_date`, `games_count`, and `merged_json_path`.
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/reports/WCS/merge-json"
 ```
 
-Returns `404` if the required odds input directory is missing. The merge behavior and file replacement warning are documented in [Report data and workflow](reporting.md).
+Returns `404` if no matching input JSON files are found and `422` if an input file is not valid JSON. The merge behavior and file replacement warning are documented in [Report data and workflow](reporting.md).
 
 ## Generate report HTML
 

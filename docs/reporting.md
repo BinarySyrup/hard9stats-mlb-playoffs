@@ -18,6 +18,7 @@ Run the service from the repository root. Report paths are relative to its worki
 ```text
 data/
   llm-prompts/
+    mlb-data-merge.txt
     mlb-data-ingestion-odds.txt
     mlb-data-ingestion-schedules.txt
     mlb-data-ingestion-scores.txt
@@ -32,7 +33,7 @@ data/
       report-YYYY-MM-DD.html
 ```
 
-Repeat the series folders for `LDS`, `LCS`, and `WS`. Place source `.json` files directly in each input folder. The merge operation requires the odds and scores directories to exist; the schedules directory is optional.
+Repeat the series folders for `LDS`, `LCS`, and `WS`. Place source `.json` files directly in one or more input folders. The merge endpoint reads every file matching `data/ingested/{SERIES}/*/*.json`; the folders can be absent, but the endpoint returns `404` if it finds no input JSON files.
 
 Screenshot ingestion uses the prompt file matching `data_type` in `data/llm-prompts`. Select `data_type=odds`, `scores`, or `schedules` and provide a `series_type` when calling `POST /ingest/screenshot`. Each request parses the model response as a JSON object and writes it to the matching series input folder: `odds/`, `scores/`, or `schedules/`. The prompt describes the expected fields; the extraction is not checked against a strict schema before saving.
 
@@ -40,13 +41,13 @@ Every screenshot-ingestion request requires a data type and series type so the m
 
 ## Merge, then generate
 
-1. Place odds and score JSON files in the series folders; add schedules when available.
+1. Place schedule, odds, and score JSON files in the matching series folders.
 2. Call `POST /reports/{series_type}/merge-json`.
 3. Review `data/reports/{SERIES}/report-merged.json` and its `games` list.
 4. Call `POST /reports/{series_type}/generate-html`.
 5. Call `GET /reports/{series_type}/status` to check the output paths and modification times.
 
-The merge writes `data/reports/{SERIES}/report-merged.json`. **Before writing, it deletes existing `.json` files in that series' report directory.** Keep other JSON artifacts elsewhere.
+The merge sends all input files and `data/llm-prompts/mlb-data-merge.txt` to Ollama. It saves the model response directly to `data/reports/{SERIES}/report-merged.json` without schema validation. **Before writing, it deletes existing `.json` files in that series' report directory.** Keep other JSON artifacts elsewhere.
 
 ## Missing data and rendered rows
 

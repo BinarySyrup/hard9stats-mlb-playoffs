@@ -51,21 +51,49 @@ class OllamaAgentClient:
             prompt=prompt,
         )
 
+    async def merge_json_files(self, combined_json: dict[str, Any]) -> str:
+        prompt_path = get_llm_prompt_path("mlb-data-merge.txt")
+        try:
+            prompt = prompt_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise AgentClientError(f"Unable to read Ollama prompt file: {prompt_path}.") from exc
+
+        prompt = f"{prompt.rstrip()}\n{json.dumps(combined_json, indent=2, ensure_ascii=False)}"
+        return await self._request_chat(prompt=prompt)
+
     async def _parse_image(
         self,
         image_bytes: bytes,
         prompt: str,
     ) -> dict[str, Any]:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        content = await self._request_chat(prompt=prompt, images=[image_b64])
+
+        try:
+            extraction = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise AgentClientError("Ollama response message content was not valid JSON.") from exc
+
+        if not isinstance(extraction, dict):
+            raise AgentClientError("Ollama JSON response must be an object.")
+
+        return extraction
+
+    async def _request_chat(
+        self,
+        prompt: str,
+        images: list[str] | None = None,
+    ) -> str:
+        message: dict[str, Any] = {
+            "role": "user",
+            "content": prompt,
+        }
+        if images:
+            message["images"] = images
+
         request_payload: dict[str, Any] = {
             "model": settings.ollama_model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt,
-                    "images": [image_b64],
-                }
-            ],
+            "messages": [message],
             "format": "json",
             "think": False,
             "stream": False,
@@ -114,13 +142,4 @@ class OllamaAgentClient:
                 diagnostics.append(f"eval_count={eval_count}")
             detail = f" ({', '.join(diagnostics)})" if diagnostics else ""
             raise AgentClientError(f"Ollama response did not contain message content{detail}.")
-
-        try:
-            extraction = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise AgentClientError("Ollama response message content was not valid JSON.") from exc
-
-        if not isinstance(extraction, dict):
-            raise AgentClientError("Ollama JSON response must be an object.")
-
-        return extraction
+        return content

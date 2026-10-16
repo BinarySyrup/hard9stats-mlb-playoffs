@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -33,6 +33,12 @@ class OddsTeam(StructuredExtraction):
 class OddsRunLine(StructuredExtraction):
     line: float | None
     odds: float | None
+    trend: Literal["Favorite", "Underdog", "TBD"]
+
+
+class OddsMoneyline(StructuredExtraction):
+    value: float | None
+    trend: Literal["Favorite", "Underdog", "TBD"]
 
 
 class AwayTotal(StructuredExtraction):
@@ -48,13 +54,13 @@ class HomeTotal(StructuredExtraction):
 class AwayOdds(StructuredExtraction):
     run_line: OddsRunLine
     total: AwayTotal
-    moneyline: float | None
+    moneyline: OddsMoneyline
 
 
 class HomeOdds(StructuredExtraction):
     run_line: OddsRunLine
     total: HomeTotal
-    moneyline: float | None
+    moneyline: OddsMoneyline
 
 
 class GameOdds(StructuredExtraction):
