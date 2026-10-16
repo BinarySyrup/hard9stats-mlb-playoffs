@@ -28,7 +28,6 @@ class ExtractionAgentMetadata(StructuredExtraction):
 
 class OddsTeam(StructuredExtraction):
     name: str
-    pitcher: str | None
 
 
 class OddsRunLine(StructuredExtraction):
@@ -64,9 +63,9 @@ class GameOdds(StructuredExtraction):
 
 
 class OddsGame(StructuredExtraction):
+    date: date | None
     away_team: OddsTeam
     home_team: OddsTeam
-    date: date | None
     odds: GameOdds
     series_id: str | None = Field(
         description=(
