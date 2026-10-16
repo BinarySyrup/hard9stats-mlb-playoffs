@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -66,9 +66,14 @@ class GameOdds(StructuredExtraction):
 class OddsGame(StructuredExtraction):
     away_team: OddsTeam
     home_team: OddsTeam
-    start_time: str | None
+    date: date | None
     odds: GameOdds
-    series_id: str | None
+    series_id: str | None = Field(
+        description=(
+            "Format as SERIES_{away_abbreviation}_{home_abbreviation} using abbreviations shown in the screenshot. "
+            "Use null if either abbreviation cannot be determined reliably."
+        )
+    )
     game_number: int | None
     league: str | None
 
@@ -78,22 +83,14 @@ class OddsData(StructuredExtraction):
 
 
 class OddsExtraction(StructuredExtraction):
-    request_id: str | None
-    created_at: str | None
-    source_image_name: str
-    data: OddsData
+    games: OddsData
     warnings: list[str]
     confidence: ExtractionConfidence
-    agent_metadata: ExtractionAgentMetadata
 
 
 class ScoreTeam(StructuredExtraction):
     name: str
-    record: str | None
-    split_record: str | None
     runs: int | None
-    hits: int | None
-    errors: int | None
 
 
 class ScoreSeries(StructuredExtraction):
@@ -103,19 +100,23 @@ class ScoreSeries(StructuredExtraction):
 
 
 class ScoreGame(StructuredExtraction):
-    date: str | None
+    date: date | None
     status: str | None
     away_team: ScoreTeam
     home_team: ScoreTeam
     series: ScoreSeries | None
+    series_id: str | None = Field(
+        description=(
+            "Format as SERIES_{away_abbreviation}_{home_abbreviation} using abbreviations shown in the screenshot. "
+            "Use null if either abbreviation cannot be determined reliably."
+        )
+    )
 
 
 class ScoresExtraction(StructuredExtraction):
-    date: str | None
     games: list[ScoreGame]
     warnings: list[str]
     confidence: ExtractionConfidence
-    agent_metadata: ExtractionAgentMetadata
 
 
 class ScheduleTeam(StructuredExtraction):
@@ -129,23 +130,25 @@ class ScheduleSeries(StructuredExtraction):
 
 
 class ScheduleGame(StructuredExtraction):
-    start_time: str | None
+    date: date | None
     status: str | None
     away_team: ScheduleTeam
     home_team: ScheduleTeam
     game_number: int | None
-    series_id: str | None
+    series_id: str | None = Field(
+        description=(
+            "Format as SERIES_{away_abbreviation}_{home_abbreviation} using abbreviations shown in the screenshot. "
+            "Use null if either abbreviation cannot be determined reliably."
+        )
+    )
     league: str | None
-    venue: str | None
     series: ScheduleSeries | None
 
 
 class SchedulesExtraction(StructuredExtraction):
-    date: str | None
     games: list[ScheduleGame]
     warnings: list[str]
     confidence: ExtractionConfidence
-    agent_metadata: ExtractionAgentMetadata
 
 
 class IngestionEnvelope(BaseModel):

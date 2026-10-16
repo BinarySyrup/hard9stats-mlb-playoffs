@@ -9,6 +9,40 @@ from app.services.agent_client import OllamaAgentClient
 from app.services.storage import build_ingestion_filename, save_json_payload
 
 
+def _only_fields(value: Any, fields: tuple[str, ...]) -> Any:
+    if not isinstance(value, dict):
+        return value
+    return {field: value[field] for field in fields if field in value}
+
+
+def _normalize_scores_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = _only_fields(payload, ("games", "warnings", "confidence"))
+    games = normalized.get("games")
+    if not isinstance(games, list):
+        return normalized
+
+    normalized_games = []
+    for game in games:
+        game = _only_fields(
+            game,
+            ("date", "status", "away_team", "home_team", "series", "series_id"),
+        )
+        if not isinstance(game, dict):
+            normalized_games.append(game)
+            continue
+
+        for team_key in ("away_team", "home_team"):
+            if team_key in game:
+                game[team_key] = _only_fields(game[team_key], ("name", "runs"))
+
+        if isinstance(game.get("series"), dict):
+            game["series"] = _only_fields(game["series"], ("league", "game", "summary"))
+        normalized_games.append(game)
+
+    normalized["games"] = normalized_games
+    return normalized
+
+
 class IngestionService:
     def __init__(self) -> None:
         self._agent_client = OllamaAgentClient()
@@ -40,19 +74,14 @@ class IngestionService:
             context=context,
         )
         if extraction_type == "odds":
-            parsed_output["request_id"] = str(request_id)
-            parsed_output["created_at"] = created_at.isoformat()
-            parsed_output["source_image_name"] = source_image_name
-            parsed_output["agent_metadata"]["migrated_from_legacy_schema"] = True
-            data = parsed_output["data"]
+            data = parsed_output.get("games", parsed_output.get("data", {}))
             output_categories = ["odds"]
         elif extraction_type == "scores":
-            parsed_output["agent_metadata"]["migrated_from_legacy_schema"] = True
-            data = {"date": parsed_output["date"], "games": parsed_output["games"]}
+            parsed_output = _normalize_scores_payload(parsed_output)
+            data = {"games": parsed_output["games"]}
             output_categories = ["scores"]
         else:
-            parsed_output["agent_metadata"]["migrated_from_legacy_schema"] = True
-            data = {"date": parsed_output["date"], "games": parsed_output["games"]}
+            data = {"games": parsed_output["games"]}
             output_categories = ["schedules"]
         output_dirs = [
             Path("data/ingested") / series_type / category

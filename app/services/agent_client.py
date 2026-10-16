@@ -4,10 +4,8 @@ from collections.abc import Mapping
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, ValidationError
 
 from app.core.config import get_llm_prompt_path, settings
-from app.models.contracts import OddsExtraction, ScoresExtraction, SchedulesExtraction
 
 
 class AgentClientError(Exception):
@@ -16,9 +14,9 @@ class AgentClientError(Exception):
 
 class OllamaAgentClient:
     _structured_extractions = {
-        "odds": ("mlb-data-ingestion-odds.txt", OddsExtraction),
-        "scores": ("mlb-data-ingestion-scores.txt", ScoresExtraction),
-        "schedules": ("mlb-data-ingestion-schedules.txt", SchedulesExtraction),
+        "odds": "mlb-data-ingestion-odds.txt",
+        "scores": "mlb-data-ingestion-scores.txt",
+        "schedules": "mlb-data-ingestion-schedules.txt",
     }
 
     def __init__(self) -> None:
@@ -35,11 +33,10 @@ class OllamaAgentClient:
         extraction_type: str,
         context: str = "",
     ) -> dict[str, Any]:
-        extraction = self._structured_extractions.get(extraction_type)
-        if extraction is None:
+        filename = self._structured_extractions.get(extraction_type)
+        if filename is None:
             raise AgentClientError(f"Unsupported screenshot extraction type: {extraction_type}.")
 
-        filename, response_model = extraction
         prompt_path = get_llm_prompt_path(filename)
         try:
             prompt = prompt_path.read_text(encoding="utf-8")
@@ -52,18 +49,14 @@ class OllamaAgentClient:
         return await self._parse_image(
             image_bytes=image_bytes,
             prompt=prompt,
-            response_model=response_model,
         )
 
     async def _parse_image(
         self,
         image_bytes: bytes,
         prompt: str,
-        response_model: type[BaseModel],
     ) -> dict[str, Any]:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        schema = response_model.model_json_schema()
-        prompt = f"{prompt}\n\nReturn JSON matching this schema:\n{json.dumps(schema, ensure_ascii=False)}"
         request_payload: dict[str, Any] = {
             "model": settings.ollama_model,
             "messages": [
@@ -73,7 +66,8 @@ class OllamaAgentClient:
                     "images": [image_b64],
                 }
             ],
-            "format": schema,
+            "format": "json",
+            "think": False,
             "stream": False,
             "options": {"temperature": 0},
         }
@@ -107,11 +101,26 @@ class OllamaAgentClient:
             raise AgentClientError("Ollama response did not contain a message.")
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
-            raise AgentClientError("Ollama response did not contain message content.")
+            diagnostics = []
+            done_reason = payload.get("done_reason")
+            if done_reason:
+                diagnostics.append(f"done_reason={done_reason}")
+            thinking = message.get("thinking")
+            diagnostics.append(
+                f"thinking_present={isinstance(thinking, str) and bool(thinking.strip())}"
+            )
+            eval_count = payload.get("eval_count")
+            if isinstance(eval_count, int):
+                diagnostics.append(f"eval_count={eval_count}")
+            detail = f" ({', '.join(diagnostics)})" if diagnostics else ""
+            raise AgentClientError(f"Ollama response did not contain message content{detail}.")
 
         try:
-            extraction = response_model.model_validate_json(content)
-        except ValidationError as exc:
-            raise AgentClientError("Ollama output did not match the requested extraction schema.") from exc
+            extraction = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise AgentClientError("Ollama response message content was not valid JSON.") from exc
 
-        return extraction.model_dump(mode="json")
+        if not isinstance(extraction, dict):
+            raise AgentClientError("Ollama JSON response must be an object.")
+
+        return extraction

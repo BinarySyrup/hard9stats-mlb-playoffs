@@ -19,7 +19,8 @@ Run the service from the repository root. Report paths are relative to its worki
 data/
   llm-prompts/
     mlb-data-ingestion-odds.txt
-    mlb-data-ingestion-schedules-scores.txt
+    mlb-data-ingestion-schedules.txt
+    mlb-data-ingestion-scores.txt
   ingested/
     WCS/
       odds/
@@ -33,9 +34,9 @@ data/
 
 Repeat the series folders for `LDS`, `LCS`, and `WS`. Place source `.json` files directly in each input folder. The merge operation requires the odds and scores directories to exist; the schedules directory is optional.
 
-Screenshot ingestion uses the prompt files in `data/llm-prompts`. Select `data_type=odds` or `data_type=scores-schedules` and provide a `series_type` when calling `POST /ingest/screenshot`. Odds JSON is written to the series' `odds/` folder; the combined score/schedule JSON is written to both `scores/` and `schedules/` so the merger can use it for each role. These files contain `games` at the root or under `data.games` and are schema-validated before saving.
+Screenshot ingestion uses the prompt file matching `data_type` in `data/llm-prompts`. Select `data_type=odds`, `scores`, or `schedules` and provide a `series_type` when calling `POST /ingest/screenshot`. Each request parses the model response as a JSON object and writes it to the matching series input folder: `odds/`, `scores/`, or `schedules/`. The prompt describes the expected fields; the extraction is not checked against a strict schema before saving.
 
-Every screenshot-ingestion request requires a data type and series type so its output is validated with the matching schema and written directly to the report input folders.
+Every screenshot-ingestion request requires a data type and series type so the matching prompt can be selected and the output written directly to the report input folders.
 
 ## Merge, then generate
 

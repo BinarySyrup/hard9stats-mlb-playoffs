@@ -10,8 +10,12 @@ from typing import Any
 
 def _parse_start_time(value: str) -> tuple[str, str]:
     cleaned = value.replace(" ET", "").strip()
-    parsed = datetime.strptime(cleaned, "%Y-%m-%d %I:%M %p")
-    return parsed.strftime("%b %d, %Y"), parsed.strftime("%I:%M %p").lstrip("0")
+    try:
+        parsed = datetime.strptime(cleaned, "%Y-%m-%d %I:%M %p")
+        return parsed.strftime("%b %d, %Y"), parsed.strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        parsed = datetime.strptime(cleaned, "%Y-%m-%d")
+        return parsed.strftime("%b %d, %Y"), ""
 
 
 def _safe_parse_start_time(value: str | None) -> tuple[str, str]:
@@ -318,7 +322,7 @@ def _render_row(
     total_header_html = '<thead><tr><th>Under</th><th>Runs</th><th>Over</th></tr></thead>' if include_team_headers else ""
 
     odds = game_data["odds"]
-    game_date, game_time = _safe_parse_start_time(game_data.get("start_time"))
+    game_date, game_time = _safe_parse_start_time(game_data.get("start_time") or game_data.get("date"))
     moneyline_away = odds["moneyline"]["away"]["trend"]
     moneyline_home = odds["moneyline"]["home"]["trend"]
     moneyline_away_score = _score_markup(game_data, "away")

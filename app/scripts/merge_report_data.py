@@ -41,6 +41,8 @@ def _extract_games(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if isinstance(data, dict) and isinstance(data.get("games"), list):
         return [game for game in data["games"] if isinstance(game, dict)]
     games = payload.get("games")
+    if isinstance(games, dict) and isinstance(games.get("games"), list):
+        return [game for game in games["games"] if isinstance(game, dict)]
     if isinstance(games, list):
         return [game for game in games if isinstance(game, dict)]
     return []
@@ -63,7 +65,7 @@ def _build_score_lookup(scores_files: list[Path]) -> dict[tuple[str, str, int], 
             game_number = int(game_number)
             lookup[(_norm_team(away), _norm_team(home), game_number)] = {
                 "file": str(score_file).replace("\\", "/"),
-                "date": game_date,
+                "date": game.get("date") or game_date,
                 "status": game.get("status", ""),
                 "away": game.get("away_team", {}),
                 "home": game.get("home_team", {}),
@@ -93,6 +95,7 @@ def _build_schedule_rows(schedule_files: list[Path]) -> list[dict[str, Any]]:
                     "game_number": int(game_number),
                     "series_id": game.get("series_id"),
                     "league": series.get("league") or game.get("league"),
+                    "date": game.get("date"),
                     "start_time": game.get("start_time"),
                     "status": game.get("status"),
                     "venue": game.get("venue"),
@@ -241,6 +244,8 @@ def _build_tbd_merged_row(
         "series_id": series_id,
         "league": league,
         "game_number": game_number,
+        "date": (schedule_row.get("date") if schedule_row else None)
+        or (score_row.get("date") if score_row else None),
         "start_time": schedule_row.get("start_time") if schedule_row else None,
         "status": (schedule_row.get("status") if schedule_row else None) or "Scheduled",
         "matchup": {"away": away_full, "home": home_full},
@@ -405,6 +410,7 @@ def merge_report_data(odds_dir: Path, scores_dir: Path, schedules_dir: Path | No
                 "series_id": series_id,
                 "league": game.get("league"),
                 "game_number": game_number,
+                "date": game.get("date") or (score.get("date") if score else None),
                 "start_time": game.get("start_time"),
                 "status": score.get("status") if score and score.get("status") else "Scheduled",
                 "matchup": {"away": away_full, "home": home_full},
@@ -509,6 +515,8 @@ def merge_report_data(odds_dir: Path, scores_dir: Path, schedules_dir: Path | No
 
         if not existing.get("start_time") and schedule_row.get("start_time"):
             existing["start_time"] = schedule_row.get("start_time")
+        if not existing.get("date") and schedule_row.get("date"):
+            existing["date"] = schedule_row.get("date")
         if existing.get("status") in (None, "", "Scheduled") and schedule_row.get("status"):
             existing["status"] = schedule_row.get("status")
         if existing.get("schedule", {}).get("venue") is None and schedule_row.get("venue") is not None:
@@ -526,7 +534,11 @@ def merge_report_data(odds_dir: Path, scores_dir: Path, schedules_dir: Path | No
     ]
 
     report_date = max(
-        (str(game["start_time"])[:10] for game in games if game.get("start_time")),
+        (
+            str(game.get("date") or game.get("start_time"))[:10]
+            for game in games
+            if game.get("date") or game.get("start_time")
+        ),
         default=datetime.now().strftime("%Y-%m-%d"),
     )
 

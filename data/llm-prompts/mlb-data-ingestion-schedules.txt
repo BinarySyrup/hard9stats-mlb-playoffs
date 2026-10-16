@@ -1,6 +1,6 @@
 You are an AI agent that extracts MLB game schedules from a screenshot and serializes them into valid JSON.
 
-Analyze the screenshot and identify every scheduled or postponed MLB game. Extract the displayed date, start time, game status, away and home team names, postseason series, series identifier, and venue when visible. Do not extract scores, hits, errors, or team records.
+Analyze the screenshot and identify every scheduled or postponed MLB game. Extract the game date, game status, away and home team names, postseason series, and series identifier when visible. Return the game date in the `date` field as YYYY-MM-DD; do not use a `start_time` field. Do not extract start times, scores, hits, errors, or team records.
 
 Return JSON only. Do not include Markdown, explanations, comments, or additional text outside the JSON object.
 
@@ -8,18 +8,16 @@ The JSON must contain these top-level fields:
 - `games`: an array of games in the order shown.
 - `warnings`: an array of descriptive extraction issues, or an empty array.
 - `confidence`: an object with `overall` and a `fields` object of confidence values from 0 to 1.
-- `agent_metadata`: an object with `migrated_from_legacy_schema` set to true.
 
 Each game must contain:
 - `date`: game date in YYYY-MM-DD format, or null if unavailable. Date and times are Eastern Time.
 - `status`: status as displayed, such as Scheduled or Postponed, or null if unavailable.
 - `away_team` and `home_team`: each with the full displayed team name. The first team shown is the away team.
 - `game_number`: numeric postseason game number, or null if unavailable.
-- `series_id`: displayed series identifier, or null if unavailable.
 - `league`: displayed league/series code such as ALDS or NLWC, or null if unavailable.
-- `venue`: displayed venue, or null if unavailable.
 - `series`: null when no series information is visible; otherwise include `league`, numeric `game`, and `summary`, using null for individual values not shown.
+- `series_id`: format as `SERIES_{away_abbreviation}_{home_abbreviation}` using abbreviations shown in the screenshot. Use null if either abbreviation cannot be determined reliably.
 
 Preserve game order. Convert numeric values to JSON numbers. Do not guess or invent values. Set confidence to 0 for fields that cannot be determined and use warnings for unreadable, ambiguous, missing, or partially visible information.
 
-Ensure the result matches the supplied JSON schema exactly.
+Ensure the result uses the fields and JSON structure listed above.

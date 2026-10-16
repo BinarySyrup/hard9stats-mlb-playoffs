@@ -32,7 +32,7 @@ Install Ollama using the instructions for your operating system, start its serve
 ollama pull gemma4:12b
 ```
 
-Confirm the model is present with `ollama list`. Edit `.env` and set `OLLAMA_BASE_URL` if Ollama is not listening at `http://localhost:11434`; the app process must be able to reach that address. `OLLAMA_MODEL` defaults to `gemma4:12b`. The repository must include the two prompt files in `data/llm-prompts`. Health and report endpoints do not require Ollama. See [Configuration](configuration.md) for all settings.
+Confirm the model is present with `ollama list`. Edit `.env` and set `OLLAMA_BASE_URL` if Ollama is not listening at `http://localhost:11434`; the app process must be able to reach that address. `OLLAMA_MODEL` defaults to `gemma4:12b`. The repository must include the three prompt files in `data/llm-prompts`. Health and report endpoints do not require Ollama. See [Configuration](configuration.md) for all settings.
 
 ## Start the development server
 
@@ -59,13 +59,22 @@ curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
   -F "series_type=WCS"
 ```
 
-For a scorecard or schedule image, use the combined prompt case:
+For a scorecard image, use `data_type=scores`:
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
-  -F "image=@./scores-schedule-screenshot.png" \
-  -F "data_type=scores-schedules" \
+  -F "image=@./scorecard-screenshot.png" \
+  -F "data_type=scores" \
   -F "series_type=WCS"
 ```
 
-`data_type` and `series_type` are required for every screenshot. Odds JSON is saved under `data/ingested/{SERIES}/odds/`. The combined scores/schedules JSON is saved under both `scores/` and `schedules/` for the report merger. The response includes all saved paths. Uploaded images are not retained.
+For a schedule image, use `data_type=schedules`:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
+  -F "image=@./schedule-screenshot.png" \
+  -F "data_type=schedules" \
+  -F "series_type=WCS"
+```
+
+`data_type` and `series_type` are required for every screenshot. `data_type` accepts `odds`, `scores`, or `schedules`. Each request saves JSON under the matching `data/ingested/{SERIES}/{data_type}/` folder. The response includes the saved path. Uploaded images are not retained.

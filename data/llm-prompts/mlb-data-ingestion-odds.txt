@@ -5,21 +5,17 @@ Analyze the screenshot and identify every baseball game shown. Extract the displ
 Return JSON only. Do not include Markdown, explanations, comments, or additional text outside the JSON object.
 
 The JSON must contain these top-level fields:
-- `request_id`: copy the trusted request ID supplied after this prompt.
-- `created_at`: copy the trusted creation timestamp supplied after this prompt.
-- `source_image_name`: copy the trusted image filename supplied after this prompt.
-- `data`: an object containing a `games` array in the order shown.
+- `games`: an object containing a `games` array in the order shown.
 - `warnings`: an array of descriptive extraction issues, or an empty array.
 - `confidence`: an object with `overall` and a `fields` object of confidence values from 0 to 1.
-- `agent_metadata`: an object with `migrated_from_legacy_schema` set to true.
 
 Each game must contain:
 - `away_team` and `home_team`: each with `name` and `pitcher`. Preserve the full team label as shown, including an abbreviation prefix. The first team shown is the away team; the second is the home team. Use null for pitchers that are not visible.
 - `date`: game date in YYYY-MM-DD format, or null if unavailable. Sportsbook times are Eastern Time. Resolve relative dates using the Eastern calendar date corresponding to the trusted `created_at` timestamp. Use null if the date or time cannot be determined.
 - `odds`: include `away` and `home` objects. Each has a `run_line` with `line` and `odds`, a `total` with `line` and the applicable total odds, and `moneyline`. Use `over_odds` for the away team and `under_odds` for the home team; repeat the displayed total line for both teams.
-- `series_id`: format as `SERIES_{away_abbreviation}_{home_abbreviation}` using abbreviations shown in the screenshot. Use null if either abbreviation cannot be determined reliably.
 - `game_number` and `league`: extract only when visible; otherwise use null. Do not infer these values.
+- `series_id`: format as `SERIES_{away_abbreviation}_{home_abbreviation}` using abbreviations shown in the screenshot. Use null if either abbreviation cannot be determined reliably.
 
 Convert odds and betting lines to JSON numbers, removing a leading `+` and preserving negative signs. Use null for absent or unreadable values and do not guess. Add warnings for unreadable odds, missing or unreadable pitchers, uncertain start times, or unreliable team abbreviations. Set confidence values to reflect the clarity of the extraction.
 
-Ensure the result matches the supplied JSON schema exactly. Use valid JSON numbers, no trailing commas, and no fields outside the schema.
+Ensure the result uses the fields and JSON structure listed above. Use valid JSON numbers and no trailing commas.
