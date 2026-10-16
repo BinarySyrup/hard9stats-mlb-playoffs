@@ -4,10 +4,10 @@ from collections.abc import Mapping
 from typing import Any
 
 import httpx
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.core.config import get_llm_prompt_path, settings
-from app.models.contracts import OddsExtraction, ScoresSchedulesExtraction
+from app.models.contracts import OddsExtraction, ScoresExtraction, SchedulesExtraction
 
 
 class AgentClientError(Exception):
@@ -17,10 +17,8 @@ class AgentClientError(Exception):
 class OllamaAgentClient:
     _structured_extractions = {
         "odds": ("mlb-data-ingestion-odds.txt", OddsExtraction),
-        "scores-schedules": (
-            "mlb-data-ingestion-schedules-scores.txt",
-            ScoresSchedulesExtraction,
-        ),
+        "scores": ("mlb-data-ingestion-scores.txt", ScoresExtraction),
+        "schedules": ("mlb-data-ingestion-schedules.txt", SchedulesExtraction),
     }
 
     def __init__(self) -> None:
@@ -61,7 +59,7 @@ class OllamaAgentClient:
         self,
         image_bytes: bytes,
         prompt: str,
-        response_model: type[OddsExtraction] | type[ScoresSchedulesExtraction],
+        response_model: type[BaseModel],
     ) -> dict[str, Any]:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
         schema = response_model.model_json_schema()

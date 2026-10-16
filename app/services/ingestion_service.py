@@ -46,10 +46,14 @@ class IngestionService:
             parsed_output["agent_metadata"]["migrated_from_legacy_schema"] = True
             data = parsed_output["data"]
             output_categories = ["odds"]
+        elif extraction_type == "scores":
+            parsed_output["agent_metadata"]["migrated_from_legacy_schema"] = True
+            data = {"date": parsed_output["date"], "games": parsed_output["games"]}
+            output_categories = ["scores"]
         else:
             parsed_output["agent_metadata"]["migrated_from_legacy_schema"] = True
             data = {"date": parsed_output["date"], "games": parsed_output["games"]}
-            output_categories = ["scores", "schedules"]
+            output_categories = ["schedules"]
         output_dirs = [
             Path("data/ingested") / series_type / category
             for category in output_categories

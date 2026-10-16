@@ -55,7 +55,7 @@ async def health_check() -> HealthResponse:
 @router.post("/ingest/screenshot", response_model=IngestionResponse)
 async def ingest_screenshot(
     image: UploadFile = File(...),
-    data_type: Literal["odds", "scores-schedules"] = Form(...),
+    data_type: Literal["odds", "scores", "schedules"] = Form(...),
     series_type: str = Form(...),
 ) -> IngestionResponse:
     if not image.content_type or not image.content_type.startswith("image/"):

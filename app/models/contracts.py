@@ -103,15 +103,46 @@ class ScoreSeries(StructuredExtraction):
 
 
 class ScoreGame(StructuredExtraction):
+    date: str | None
     status: str | None
     away_team: ScoreTeam
     home_team: ScoreTeam
     series: ScoreSeries | None
 
 
-class ScoresSchedulesExtraction(StructuredExtraction):
+class ScoresExtraction(StructuredExtraction):
     date: str | None
     games: list[ScoreGame]
+    warnings: list[str]
+    confidence: ExtractionConfidence
+    agent_metadata: ExtractionAgentMetadata
+
+
+class ScheduleTeam(StructuredExtraction):
+    name: str
+
+
+class ScheduleSeries(StructuredExtraction):
+    league: str | None
+    game: int | None
+    summary: str | None
+
+
+class ScheduleGame(StructuredExtraction):
+    start_time: str | None
+    status: str | None
+    away_team: ScheduleTeam
+    home_team: ScheduleTeam
+    game_number: int | None
+    series_id: str | None
+    league: str | None
+    venue: str | None
+    series: ScheduleSeries | None
+
+
+class SchedulesExtraction(StructuredExtraction):
+    date: str | None
+    games: list[ScheduleGame]
     warnings: list[str]
     confidence: ExtractionConfidence
     agent_metadata: ExtractionAgentMetadata
