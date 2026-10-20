@@ -24,6 +24,19 @@ Copy-Item .env.example .env
 
 For macOS or Linux, create and activate a Python 3.14 virtual environment, then install dependencies from a platform-specific lock file before installing the project with `python -m pip install --no-deps -e .`.
 
+## Run the API tests
+
+With the virtual environment activated, install the development dependencies and run the test suite from the repository root:
+
+```powershell
+python -m pip install -r requirements-dev.lock
+python -m pytest
+```
+
+The API tests cover health, screenshot ingestion, merging, HTML generation, and report status. They use temporary directories for generated files and mock Ollama calls, so Ollama does not need to be running.
+
+The ingestion cases use LDS screenshots placed in `tests/fixtures/lds/odds/`, `tests/fixtures/lds/schedules/`, and `tests/fixtures/lds/scores/`. They accept `.jpg`, `.jpeg`, `.png`, and `.webp` files; a category is skipped until its folder contains a screenshot. See the [fixture README](../tests/fixtures/lds/README.md) for details. For macOS or Linux, use a development lock file resolved for that platform.
+
 ## Configure screenshot ingestion
 
 Install Ollama using the instructions for your operating system, start its server, and pull both default models:

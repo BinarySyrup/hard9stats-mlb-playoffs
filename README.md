@@ -1,4 +1,8 @@
-# Hard9Stats MLB Playoffs
+# Hard 9 Stats - MLB Playoffs
+
+Hard 9 Stats provides analytics for MLB postseason sports-market stats. 
+
+[Hard 9 Stats Website](https://www.hard9stats.com)
 
 A Python FastAPI service for MLB postseason sports-market stats analytics report.
 
@@ -12,7 +16,11 @@ A Python FastAPI service for MLB postseason sports-market stats analytics report
 | Ollama client | Ollama `/api/chat` via HTTPX 0.28.1; server is configured separately |
 | Vision model | `qwen2.5vl:7b` by default |
 | Reasoning model | `gemma4:12b` by default |
-| Development checks | Pytest 9.1.1 (optional development dependency) |
+| API test suite | Pytest 9.1.1; FastAPI TestClient; isolated temporary directories; mocked Ollama calls |
+
+## Documentation
+
+Start with the [documentation index](docs/index.md) for setup, configuration, API usage, report workflow, and deployment. The interactive API reference is available at `/docs` when the service is running.
 
 ## How it works
 
@@ -47,7 +55,3 @@ curl -X POST "http://127.0.0.1:8000/ingest/WCS/odds/" \
 ```
 
 Ingested files are stored under `data/ingested/{series_type}/{data_type}/`. Merged JSON and generated HTML are stored under `data/reports/{series_type}/`.
-
-## Documentation
-
-Start with the [documentation index](docs/index.md) for setup, configuration, API usage, report workflow, and deployment. The interactive API reference is available at `/docs` when the service is running.
