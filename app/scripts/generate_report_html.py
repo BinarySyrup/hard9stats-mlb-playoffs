@@ -7,6 +7,16 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
+from app.services.odds_normalization import normalize_moneyline_trends
+
+
+_SERIES_REPORT_TITLES = {
+    "WCS": "Wild Card Series",
+    "LDS": "League Division Series",
+    "LCS": "League Championship Series",
+    "WS": "World Series",
+}
+
 
 def _parse_start_time(value: str) -> tuple[str, str]:
     cleaned = value.replace(" ET", "").strip()
@@ -111,12 +121,17 @@ def _spread_covering_side(game_data: dict[str, Any]) -> str | None:
     return "away" if away_covers else "home"
 
 
+def _total_market_data(odds: dict[str, Any]) -> dict[str, Any]:
+    total = odds.get("total")
+    return total if isinstance(total, dict) else {}
+
+
 def _total_runs_difference(game_data: dict[str, Any]) -> Decimal | None:
     score = game_data.get("score") or {}
     odds = game_data.get("odds") or {}
     away_runs = (score.get("away") or {}).get("runs")
     home_runs = (score.get("home") or {}).get("runs")
-    total_line = ((odds.get("total_runs") or {}).get("line"))
+    total_line = _total_market_data(odds).get("line")
     away_value = _as_decimal(away_runs)
     home_value = _as_decimal(home_runs)
     line_value = _as_decimal(total_line)
@@ -246,7 +261,12 @@ def _summarize_betting(games: Any) -> dict[str, dict[str, int]]:
         odds = game_data.get("odds") or {}
         final_score = _final_score(game_data)
         for market_name, outcome_for in outcomes.items():
-            if not _has_odds_data(odds.get(market_name)):
+            market_data = (
+                _total_market_data(odds)
+                if market_name == "total_runs"
+                else odds.get(market_name)
+            )
+            if not _has_odds_data(market_data):
                 continue
             outcome = outcome_for(game_data, final_score)
             if outcome is not None:
@@ -344,7 +364,7 @@ def _render_row(
             f'<td{spread_class}><span class="{_trend_class(spread_trend)}">{spread_trend}{_spread_line_suffix(spread_trend, spread_line)}</span><span class="location-value">{location}</span></td>'
         )
 
-    total_line = _normalize_total_line(odds["total_runs"].get("line"))
+    total_line = _normalize_total_line(_total_market_data(odds).get("line"))
     total_difference = _total_runs_difference(game_data)
     total_cover = _total_runs_covering_side(total_difference)
     under_cover_class = ' class="total-runs-cover"' if total_cover == "under" else ""
@@ -495,6 +515,7 @@ def _render_game_block(section_id: str, series_games: dict[int, dict[str, Any]])
 
 
 def render_report_html(merged_payload: dict[str, Any]) -> str:
+    normalize_moneyline_trends(merged_payload)
     report_date_value = merged_payload.get("generated_report_date") or datetime.now().astimezone().strftime("%Y-%m-%d")
     report_date = datetime.strptime(report_date_value, "%Y-%m-%d")
     report_date_long = report_date.strftime("%B %d, %Y")
@@ -519,7 +540,8 @@ def render_report_html(merged_payload: dict[str, Any]) -> str:
         "Overall Betting Totals",
         2,
     )
-    report_type = "Wild Card Series"
+    series_type = str(merged_payload.get("series_type") or "WCS").strip().upper()
+    report_type = _SERIES_REPORT_TITLES.get(series_type, _SERIES_REPORT_TITLES["WCS"])
 
     return f"""<!DOCTYPE html>
 <html lang=\"en\">

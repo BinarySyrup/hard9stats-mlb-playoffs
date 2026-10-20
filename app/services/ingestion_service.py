@@ -6,6 +6,7 @@ from uuid import uuid4
 from app.core.config import settings
 from app.models.contracts import ConfidencePayload, IngestionEnvelope
 from app.services.agent_client import OllamaAgentClient
+from app.services.odds_normalization import normalize_moneyline_trends
 from app.services.storage import build_ingestion_filename, save_json_payload
 
 
@@ -16,7 +17,7 @@ def _only_fields(value: Any, fields: tuple[str, ...]) -> Any:
 
 
 def _normalize_scores_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    normalized = _only_fields(payload, ("games", "warnings", "confidence"))
+    normalized = _only_fields(payload, ("screenshot_date", "games", "warnings", "confidence"))
     games = normalized.get("games")
     if not isinstance(games, list):
         return normalized
@@ -74,14 +75,19 @@ class IngestionService:
             context=context,
         )
         if extraction_type == "odds":
-            data = parsed_output.get("games", parsed_output.get("data", {}))
+            normalize_moneyline_trends(parsed_output)
+            data = {"games": parsed_output.get("games", [])}
             output_categories = ["odds"]
         elif extraction_type == "scores":
             parsed_output = _normalize_scores_payload(parsed_output)
             data = {"games": parsed_output["games"]}
+            if "screenshot_date" in parsed_output:
+                data["screenshot_date"] = parsed_output["screenshot_date"]
             output_categories = ["scores"]
         else:
             data = {"games": parsed_output["games"]}
+            if "screenshot_date" in parsed_output:
+                data["screenshot_date"] = parsed_output["screenshot_date"]
             output_categories = ["schedules"]
         output_dirs = [
             Path("data/ingested") / series_type / category

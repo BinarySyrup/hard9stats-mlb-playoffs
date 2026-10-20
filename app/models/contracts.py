@@ -37,35 +37,30 @@ class OddsRunLine(StructuredExtraction):
 
 
 class OddsMoneyline(StructuredExtraction):
-    value: float | None
+    odds: float | None
     trend: Literal["Favorite", "Underdog", "TBD"]
 
 
-class AwayTotal(StructuredExtraction):
+class GameTotal(StructuredExtraction):
     line: float | None
     over_odds: float | None
-
-
-class HomeTotal(StructuredExtraction):
-    line: float | None
     under_odds: float | None
 
 
 class AwayOdds(StructuredExtraction):
     run_line: OddsRunLine
-    total: AwayTotal
     moneyline: OddsMoneyline
 
 
 class HomeOdds(StructuredExtraction):
     run_line: OddsRunLine
-    total: HomeTotal
     moneyline: OddsMoneyline
 
 
 class GameOdds(StructuredExtraction):
     away: AwayOdds
     home: HomeOdds
+    total: GameTotal
 
 
 class OddsGame(StructuredExtraction):
@@ -81,12 +76,8 @@ class OddsGame(StructuredExtraction):
     )
 
 
-class OddsData(StructuredExtraction):
-    games: list[OddsGame]
-
-
 class OddsExtraction(StructuredExtraction):
-    games: OddsData
+    games: list[OddsGame]
     warnings: list[str]
     confidence: ExtractionConfidence
 
@@ -117,6 +108,7 @@ class ScoreGame(StructuredExtraction):
 
 
 class ScoresExtraction(StructuredExtraction):
+    screenshot_date: date | None
     games: list[ScoreGame]
     warnings: list[str]
     confidence: ExtractionConfidence
@@ -137,18 +129,17 @@ class ScheduleGame(StructuredExtraction):
     status: str | None
     away_team: ScheduleTeam
     home_team: ScheduleTeam
-    game_number: int | None
     series_id: str | None = Field(
         description=(
             "Format as SERIES_{away_abbreviation}_{home_abbreviation} using abbreviations shown in the screenshot. "
             "Use null if either abbreviation cannot be determined reliably."
         )
     )
-    league: str | None
     series: ScheduleSeries | None
 
 
 class SchedulesExtraction(StructuredExtraction):
+    screenshot_date: date | None
     games: list[ScheduleGame]
     warnings: list[str]
     confidence: ExtractionConfidence

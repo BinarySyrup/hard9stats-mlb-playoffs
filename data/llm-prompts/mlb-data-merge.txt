@@ -4,15 +4,19 @@ You will receive all JSON files for one report, grouped by type: schedules, odds
 
 Each filename contains a UTC generation timestamp in the format `YYYYMMDDTHHMMSSZ`. Use the timestamp in the filename to establish recency across all three file types. Do not use file modification times. For the same game and field, the value in the newest file that explicitly provides that field takes precedence, even when that value is null, empty, or `TBD`. If a newer file omits a field entirely, retain the newest older value available for that field. Apply this rule across file types.
 
-Identify games using `series_id` and game number when available. Also compare away and home teams in that order, normalizing harmless differences such as abbreviations, punctuation, and whitespace. Use dates and series information to disambiguate matches. Never swap the away and home teams. Do not combine games from different series just because they share a game number. If an odds or score record lacks a game number, use a schedule record to assign one only when the matchup maps unambiguously to exactly one scheduled game.
+The combined game total is stored once in the top-level `odds.total` object, with `line`, `over_odds`, and `under_odds`. Keep it separate from the `away` and `home` markets.
+
+Identify games using `series_id` and game number when available. In schedule and score inputs, the game number is `series.game`. Also compare away and home teams in that order, normalizing harmless differences such as abbreviations, punctuation, and whitespace. Use dates and series information to disambiguate matches. Never swap the away and home teams. Do not combine games from different series just because they share a game number. If an odds or score record lacks a game number, use a schedule record to assign one only when the matchup maps unambiguously to exactly one scheduled game.
 
 Build one merged row per unique game. The schedule files define the full expected game set when they are present. Keep every scheduled game, including future or postponed games and games without odds. Include any additional unique games found in odds or scores files. Do not invent games that are not supported by an input record. A Wild Card Series report may have up to 12 expected games (4 matchups with 3 games each); do not truncate the schedule to games already played or games that already have odds.
 
-For joined records, prefer the canonical full team names displayed in the odds data when available. Preserve the away/home orientation and use reliable abbreviations from the input data. Do not invent team abbreviations, scores, odds, dates, times, or other facts.
+For joined records, prefer the canonical full team names displayed in the odds data when available. Preserve the away/home orientation and use reliable abbreviations from the input data. Do not invent team abbreviations, scores, odds, dates, or other facts.
 
 For odds, keep each market independently. If a game has no odds data, retain the game and set numeric odds fields to null and trend fields to `TBD`. If only some odds data is available, retain the supplied values, use null for missing numeric values, and set only undetermined trend fields to `TBD`. A game with partial odds must remain in the merged JSON. The report renderer decides which rows to display.
 
-Use explicit `trend` values from the odds input for each moneyline and run-line market when available, preserving the file timestamp precedence. If a trend is unavailable, use `Favorite` and `Underdog` only when the supplied values make the comparison clear; follow the existing report convention that the lower numeric moneyline value or spread line is the favorite when both sides are available. Otherwise use `TBD`. Do not infer odds values from trend labels. Copy score values, game status, and schedule details only when present in source data. Scores that are not supplied must remain null.
+Copy every supplied odds and betting-line number with its sign unchanged. A negative number must remain negative; never take an absolute value, remove a minus sign, or turn a negative number positive. For example, input `-115` must remain `-115`, and `-1.5` must remain `-1.5`. Apply this to moneyline odds, spread lines and odds, the total line, and over/under odds.
+
+Derive each moneyline trend from its paired numeric odds instead of copying the input trend labels. When both prices are present and differ, the lower numeric price is `Favorite` and the other is `Underdog`; when either price is missing or the prices are equal, set both trends to `TBD`. For spread trends, preserve explicit input trends when available; otherwise compare the spread lines, using the lower line as `Favorite`. Do not infer odds from trend labels. Copy score values, game status, and schedule details only when present in source data. Scores that are not supplied must remain null.
 
 Return JSON only. Do not include Markdown, explanations, comments, or text outside the JSON object. Use valid JSON, double-quoted property names, and no trailing commas. Include the following top-level fields:
 - `source_files`: an object with `odds`, `scores`, and `schedules` arrays. Include every supplied filename under its type, in ascending timestamp order, using the filename exactly as provided. Use an empty array for a type with no files.
@@ -20,20 +24,124 @@ Return JSON only. Do not include Markdown, explanations, comments, or text outsi
 - `warnings`: an array of descriptive extraction issues, or an empty array.
 - `confidence`: an object with `overall` and a `fields` object of confidence values from 0 to 1.
 
+Use this exact JSON structure. The values below illustrate the format; extract actual values from the screenshot.
+
+```json
+{
+  "source_files": {
+    "odds": [
+      "odds/20261020T201558Z_76b6c62f-0f34-4b15-aa5e-714af596966f.json"
+    ],
+    "scores": [
+      "scores/20261020T201628Z_e47b853b-ca14-4314-86dd-171f3f2f228e.json"
+    ],
+    "schedules": [
+      "schedules/20261020T201539Z_f635219f-6863-4176-925b-223ac263352a.json"
+    ]
+  },
+  "games": [
+    {
+      "date": "2026-10-03",
+      "status": "Final",
+      "series_id": "SERIES_CHW_GU",
+      "league": "ALDS",
+      "game_number": 1,
+      "matchup": {
+        "away": "CHI White Sox",
+        "home": "CLE Guardians"
+      },
+      "teams": {
+        "away": {
+          "abbr": "CHW",
+          "name": "White Sox",
+          "full_name": "CHI White Sox"
+        },
+        "home": {
+          "abbr": "CLE",
+          "name": "Guardians",
+          "full_name": "CLE Guardians"
+        }
+      },
+      "odds": {
+        "moneyline": {
+          "away": {
+            "odds": 123,
+            "trend": "Underdog"
+          },
+          "home": {
+            "odds": -149,
+            "trend": "Favorite"
+          }
+        },
+        "spread": {
+          "away": {
+            "line": 1.5,
+            "odds": -181,
+            "trend": "Underdog"
+          },
+          "home": {
+            "line": -1.5,
+            "odds": 149,
+            "trend": "Favorite"
+          }
+        },
+        "total": {
+          "line": 6.5,
+          "over_odds": -122,
+          "under_odds": 102
+        }
+      },
+      "score": {
+        "away": {
+          "runs": 3
+        },
+        "home": {
+          "runs": 0
+        }
+      },
+      "series": {
+        "summary": "CHW leads series 1-0"
+      },
+      "sources": {
+        "odds": "odds/20261020T201558Z_76b6c62f-0f34-4b15-aa5e-714af596966f.json",
+        "score": "scores/20261020T201628Z_e47b853b-ca14-4314-86dd-171f3f2f228e.json",
+        "schedule": "schedules/20261020T201539Z_f635219f-6863-4176-925b-223ac263352a.json"
+      }
+    }
+  ],
+  "warnings": [],
+  "confidence": {
+    "overall": 1,
+    "fields": {
+      "date": 1,
+      "series_id": 1,
+      "league": 1,
+      "game_number": 1,
+      "status": 1,
+      "matchup": 1,
+      "teams": 1,
+      "odds": 1,
+      "score": 1,
+      "series": 1,
+      "sources": 1
+    }
+  }
+}
+```
+
 Each game row must contain these fields:
 - `date`: the game date in YYYY-MM-DD format, or null.
+- `status`: status as displayed, such as Final, In Progress, Scheduled, or Postponed, or null if unavailable.
 - `series_id`: the series identifier from the source data, or a reliably determined identifier. Use null if it cannot be determined.
 - `league`: the league or postseason series code, or null.
 - `game_number`: the numeric game number, or null only when it cannot be determined from the inputs.
-- `start_time`: the scheduled start date and time in `YYYY-MM-DD HH:MM AM ET` format when available, or null.
-- `status`: the latest supplied status, or `Scheduled` when no status is available for a scheduled game.
 - `matchup`: an object with `away` and `home` full team names.
 - `teams`: an object with `away` and `home` team objects. Each team object must contain `abbr`, `name`, `full_name`. Use the odds team label as the canonical full name when available. Use `TBD` for an abbreviation that cannot be reliably determined.
-- `odds`: an object with `moneyline`, `spread`, and `total_runs`. `moneyline.away` and `.home` each contain numeric `value` or null and a `trend`. `spread.away` and `.home` each contain numeric `line`, numeric `odds`, and a `trend`. `total_runs` contains numeric `line`, `over_odds`, and `under_odds`, using null when unavailable.
+- `odds`: an object with `moneyline`, `spread`, and `total`. `moneyline.away` and `.home` each contain numeric `odds` or null and a `trend`. `spread.away` and `.home` each contain numeric `line`, numeric `odds`, and a `trend`. The separate `total` object contains numeric `line`, `over_odds`, and `under_odds`, using null when unavailable.
 - `score`: an object with `away` and `home` objects, each containing numeric `runs`, using null when unavailable.
 - `series`: an object containing `summary`, or null when unavailable.
 - `sources`: an object containing `odds`, `score`, and `schedule`. For each type, use the filename of the newest file that supplied data for this game, or null if that type supplied no data for it.
 
 Ensure every object follows this structure, all numeric values are JSON numbers or null, and all expected scheduled games are present in `games`.
 
-Here is the data:
+Here is the JSON data to merge:

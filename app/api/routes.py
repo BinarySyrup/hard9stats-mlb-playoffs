@@ -17,6 +17,7 @@ from app.models.contracts import (
 from app.scripts.generate_report_html import render_report_html
 from app.services.agent_client import AgentClientError, OllamaAgentClient
 from app.services.ingestion_service import IngestionService
+from app.services.odds_normalization import normalize_moneyline_trends
 
 router = APIRouter()
 
@@ -186,6 +187,14 @@ async def merge_report_json(
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         raise HTTPException(status_code=status_code, detail=message) from exc
 
+    try:
+        response_metadata = json.loads(merged_json_text)
+    except json.JSONDecodeError:
+        response_metadata = None
+    if isinstance(response_metadata, dict):
+        normalize_moneyline_trends(response_metadata)
+        merged_json_text = json.dumps(response_metadata, indent=2, ensure_ascii=False)
+
     output_dir = Path(f"data/reports/{series_key}")
     output_dir.mkdir(parents=True, exist_ok=True)
     for existing_json in output_dir.glob("*.json"):
@@ -194,13 +203,9 @@ async def merge_report_json(
     output_path = output_dir / "report-merged.json"
     output_path.write_text(merged_json_text, encoding="utf-8")
 
-    # The model response is saved without schema validation; parsing is best-effort for response metadata only.
+    # Normalize Moneyline trends from prices; other model fields remain unvalidated.
     report_date = "latest"
     games_count = 0
-    try:
-        response_metadata = json.loads(merged_json_text)
-    except json.JSONDecodeError:
-        response_metadata = None
     if isinstance(response_metadata, dict):
         if isinstance(response_metadata.get("report_date"), str):
             report_date = response_metadata["report_date"]

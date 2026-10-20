@@ -5,16 +5,79 @@ Analyze the screenshot and identify every baseball game shown. Extract the displ
 Return JSON only. Do not include Markdown, explanations, comments, or additional text outside the JSON object.
 
 The JSON must contain these top-level fields:
-- `games`: an object containing a `games` array in the order shown.
+- `games`: an array of game objects in screenshot order.
 - `warnings`: an array of descriptive extraction issues, or an empty array.
 - `confidence`: an object with `overall` and a `fields` object of confidence values from 0 to 1.
+
+Use this exact JSON structure. The values below illustrate the format; extract actual values from the screenshot.
+
+```json
+{
+  "games": [
+    {
+      "date": "2023-10-03",
+      "away_team": {
+        "name": "CHI White Sox"
+      },
+      "home_team": {
+        "name": "CLE Guardians"
+      },
+      "odds": {
+        "away": {
+          "run_line": {
+            "line": 1.5,
+            "odds": -181,
+            "trend": "Underdog"
+          },
+          "moneyline": {
+            "odds": 123,
+            "trend": "Underdog"
+          }
+        },
+        "home": {
+          "run_line": {
+            "line": -1.5,
+            "odds": 149,
+            "trend": "Favorite"
+          },
+          "moneyline": {
+            "odds": -149,
+            "trend": "Favorite"
+          }
+        },
+        "total": {
+          "line": 6.5,
+          "over_odds": -122,
+          "under_odds": 102
+        }
+      },
+      "series_id": "SERIES_CHI_CLE"
+    }
+  ],
+  "warnings": [],
+  "confidence": {
+    "overall": 0.95,
+    "fields": {
+      "date": 0.9,
+      "away_team": 0.99,
+      "home_team": 0.99,
+      "odds": 0.99,
+      "series_id": 0.9
+    }
+  }
+}
+```
 
 Each game must contain:
 - `date`: game date in YYYY-MM-DD format, or null if unavailable. Sportsbook times are Eastern Time. Resolve relative dates using the Eastern calendar date corresponding to the trusted `created_at` timestamp. Use null if the date or time cannot be determined.
 - `away_team` and `home_team`: each with `name`. Preserve the full team label as shown, including an abbreviation prefix. The first team shown is the away team; the second is the home team.
-- `odds`: include `away` and `home` objects. Each has a `run_line` with `line`, `odds`, and `trend`; a `total` with `line` and the applicable total odds; and a `moneyline` object with `value` and `trend`. Use `over_odds` for the away team and `under_odds` for the home team; repeat the displayed total line for both teams. Do not add trend fields to the total.
+- `odds`: include `away`, `home`, and `total` sections. The `away` and `home` objects each contain a `run_line` with `line`, `odds`, and `trend`, and a `moneyline` object with `odds` and `trend`. Store the moneyline price in `moneyline.odds`. Store the game total once in the separate `total` object, with `line`, `over_odds`, and `under_odds`. Do not put a `total` object under `away` or `home`, repeat the total line, or add trend fields to the total.
 - `series_id`: format as `SERIES_{away_abbreviation}_{home_abbreviation}` using abbreviations shown in the screenshot. Use null if either abbreviation cannot be determined reliably.
 
-Convert odds and betting lines to JSON numbers, removing a leading `+` and preserving negative signs. Use null for absent or unreadable values and do not guess. For each game's moneyline, compare the away and home `value` numbers: the lower numeric value is `Favorite` and the other is `Underdog`. For the run line, compare the away and home `line` numbers: the lower numeric line is `Favorite` and the other is `Underdog`. Put the result in each side's own `trend` field. If either side is missing, unreadable, or equal, set both trends for that market to `TBD`. Do not calculate a trend by comparing moneyline values to run-line values. Add warnings for unreadable odds, uncertain start times, or unreliable team abbreviations. Set confidence values to reflect the clarity of the extraction.
+Convert odds and betting lines to JSON numbers. A leading `+` may be omitted, but a leading minus sign is part of the value and must be preserved; never take an absolute value or change a negative number to positive. Normalize a visible Unicode minus (`−`) to the JSON minus sign (`-`). For example, `-115` becomes `-115`, `−110` becomes `-110`, `-1.5` becomes `-1.5`, and `+115` becomes `115`. Apply this to moneyline odds, run-line odds and lines, total line, and over/under odds. Use null for absent or unreadable values and do not guess.
 
-Ensure the result uses the fields and JSON structure listed above. Use valid JSON numbers and no trailing commas.
+Determine each moneyline trend from the two numeric moneyline odds, not from team reputation, run-line odds, or a separate label in the screenshot. When both odds are readable and different, the lower numeric odds value is `Favorite` and the other is `Underdog`. This rule applies when both values are positive and when both are negative. For example, `+123` versus `+149` becomes away `Favorite` and home `Underdog`; `+100` versus `+120` also becomes away `Favorite` and home `Underdog`. Never label both sides `Underdog` or both sides `Favorite` when the odds differ. If either side's odds are missing or unreadable, or the odds are equal, set both trends to `TBD`.
+
+For the run line, compare the away and home `line` numbers: the lower numeric line is `Favorite` and the other is `Underdog`. Put the result in each side's own `trend` field. Before returning JSON, check every game with two readable, unequal moneyline odds: exactly one side must be `Favorite` and the other must be `Underdog`. Do not calculate a trend by comparing moneyline odds to run-line values.
+
+Before returning JSON, check every price and line shown with a minus sign in the screenshot and confirm its JSON number is negative. Ensure the result uses the fields and JSON structure listed above. Use valid JSON numbers and no trailing commas.

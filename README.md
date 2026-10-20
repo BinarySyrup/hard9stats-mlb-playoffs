@@ -55,3 +55,5 @@ curl -X POST "http://127.0.0.1:8000/ingest/WCS/odds/" \
 ```
 
 Ingested files are stored under `data/ingested/{series_type}/{data_type}/`. Merged JSON and generated HTML are stored under `data/reports/{series_type}/`.
+
+Odds extraction JSON stores game objects in screenshot order in the top-level `games` array, alongside `warnings` and `confidence`. Each team's moneyline price is numeric `moneyline.odds`; trends are derived from the paired prices, with the lower numeric price marked Favorite and missing or equal prices marked `TBD`. Each game's total is stored once at `odds.total`, with `line`, `over_odds`, and `under_odds`, separate from the away and home team markets. Score and schedule extraction also stores `screenshot_date` when visible, and places postseason game number and league in `series.game` and `series.league`.
