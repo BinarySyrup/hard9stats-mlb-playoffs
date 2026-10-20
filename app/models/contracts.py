@@ -79,8 +79,6 @@ class OddsGame(StructuredExtraction):
             "Use null if either abbreviation cannot be determined reliably."
         )
     )
-    game_number: int | None
-    league: str | None
 
 
 class OddsData(StructuredExtraction):
