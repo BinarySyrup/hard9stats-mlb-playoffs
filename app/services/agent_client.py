@@ -23,8 +23,10 @@ class OllamaAgentClient:
         self._base_url = settings.ollama_base_url.strip().rstrip("/")
         if not self._base_url:
             raise AgentClientError("Missing OLLAMA_BASE_URL in environment configuration.")
-        if not settings.ollama_model.strip():
-            raise AgentClientError("Missing OLLAMA_MODEL in environment configuration.")
+        if not settings.ollama_vision_model.strip():
+            raise AgentClientError("Missing OLLAMA_VISION_MODEL in environment configuration.")
+        if not settings.ollama_reasoning_model.strip():
+            raise AgentClientError("Missing OLLAMA_REASONING_MODEL in environment configuration.")
 
     async def parse_structured_screenshot(
         self,
@@ -49,6 +51,7 @@ class OllamaAgentClient:
         return await self._parse_image(
             image_bytes=image_bytes,
             prompt=prompt,
+            model=settings.ollama_vision_model,
         )
 
     async def merge_json_files(self, combined_json: dict[str, Any]) -> str:
@@ -59,15 +62,16 @@ class OllamaAgentClient:
             raise AgentClientError(f"Unable to read Ollama prompt file: {prompt_path}.") from exc
 
         prompt = f"{prompt.rstrip()}\n{json.dumps(combined_json, indent=2, ensure_ascii=False)}"
-        return await self._request_chat(prompt=prompt)
+        return await self._request_chat(prompt=prompt, model=settings.ollama_reasoning_model)
 
     async def _parse_image(
         self,
         image_bytes: bytes,
         prompt: str,
+        model: str,
     ) -> dict[str, Any]:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        content = await self._request_chat(prompt=prompt, images=[image_b64])
+        content = await self._request_chat(prompt=prompt, model=model, images=[image_b64])
 
         try:
             extraction = json.loads(content)
@@ -82,6 +86,7 @@ class OllamaAgentClient:
     async def _request_chat(
         self,
         prompt: str,
+        model: str,
         images: list[str] | None = None,
     ) -> str:
         message: dict[str, Any] = {
@@ -92,7 +97,7 @@ class OllamaAgentClient:
             message["images"] = images
 
         request_payload: dict[str, Any] = {
-            "model": settings.ollama_model,
+            "model": model,
             "messages": [message],
             "format": "json",
             "think": False,

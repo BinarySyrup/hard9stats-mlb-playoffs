@@ -108,7 +108,7 @@ class IngestionService:
             warnings=[str(item) for item in warnings],
             confidence=confidence,
             agent_metadata={
-                "model": settings.ollama_model,
+                "model": settings.ollama_vision_model,
                 "api_url": settings.ollama_base_url,
                 "extraction_type": extraction_type,
                 "series_type": series_type,

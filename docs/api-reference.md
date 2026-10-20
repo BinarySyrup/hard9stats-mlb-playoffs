@@ -21,7 +21,7 @@ curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
   -F "series_type=WCS"
 ```
 
-`data_type` accepts `odds`, `scores`, or `schedules`; `series_type` accepts `WCS`, `LDS`, `LCS`, or `WS`. The service sends the matching prompt from `data/llm-prompts` and asks Ollama for JSON. The response must be a valid JSON object, but its fields are not checked against a strict extraction schema before saving. Output is saved to the matching `data/ingested/{SERIES}/{data_type}/` folder. The success response includes `request_id`, `created_at`, `source_image_name`, `data`, `warnings`, `confidence`, `agent_metadata`, `extraction_type`, `series_type`, `saved_file_path`, and `saved_file_paths`. Uploaded images are not retained.
+`data_type` accepts `odds`, `scores`, or `schedules`; `series_type` accepts `WCS`, `LDS`, `LCS`, or `WS`. The service sends the matching prompt from `data/llm-prompts` to the configured Ollama vision model and asks for JSON. The response must be a valid JSON object, but its fields are not checked against a strict extraction schema before saving. Output is saved to the matching `data/ingested/{SERIES}/{data_type}/` folder. The success response includes `request_id`, `created_at`, `source_image_name`, `data`, `warnings`, `confidence`, `agent_metadata`, `extraction_type`, `series_type`, `saved_file_path`, and `saved_file_paths`. Uploaded images are not retained.
 
 The expected extracted data shape is type-specific. Odds use `data.games[]` entries with a `date` (`YYYY-MM-DD`), teams, odds, and `series_id`; odds extraction does not include `start_time`, `game_number`, or `league`. Score and schedule games also carry their own `date` (`YYYY-MM-DD`). Score and schedule JSON does not include a top-level screenshot `date`. For the ingestion response, score and schedule `data` contains `games` only; warnings, confidence, and extraction metadata remain at the response top level.
 
@@ -31,7 +31,7 @@ Common errors: `400` for a non-image or empty upload; `422` for missing or unsup
 
 ### `POST /reports/{series_type}/merge-json`
 
-Reads every JSON file matching `data/ingested/{SERIES}/*/*.json`, groups files by their immediate subdirectory, and sends the grouped inputs with `data/llm-prompts/mlb-data-merge.txt` to Ollama. The model response is saved to `data/reports/{SERIES}/report-merged.json` without schema validation. The response includes `series_type`, `report_date`, `games_count`, and `merged_json_path`.
+Reads every JSON file matching `data/ingested/{SERIES}/*/*.json`, groups files by their immediate subdirectory, and sends the grouped inputs with `data/llm-prompts/mlb-data-merge.txt` to the configured Ollama reasoning model. The model response is saved to `data/reports/{SERIES}/report-merged.json` without schema validation. The response includes `series_type`, `report_date`, `games_count`, and `merged_json_path`.
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/reports/WCS/merge-json"
