@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, File, Form, HTTPException, Path as ApiPath, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Path as ApiPath, UploadFile, status
 from pydantic import ValidationError
 
 from app.models.contracts import (
@@ -51,11 +51,23 @@ async def health_check() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
-@router.post("/ingest/screenshot", response_model=IngestionResponse)
+@router.post(
+    "/ingest/{series_type}/{data_type}/",
+    response_model=IngestionResponse,
+    summary="Ingest a screenshot for a series and data type",
+)
 async def ingest_screenshot(
+    series_type: str = ApiPath(
+        ...,
+        description="Series type code. Accepted values: WCS, LDS, LCS, WS (aliases supported, e.g. wild-card).",
+        examples=["WCS"],
+    ),
+    data_type: Literal["odds", "scores", "schedules"] = ApiPath(
+        ...,
+        description="Screenshot data type and extraction prompt to use.",
+        examples=["odds"],
+    ),
     image: UploadFile = File(...),
-    data_type: Literal["odds", "scores", "schedules"] = Form(...),
-    series_type: str = Form(...),
 ) -> IngestionResponse:
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(

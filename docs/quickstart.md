@@ -51,31 +51,25 @@ The API reference is at `http://127.0.0.1:8000/docs`. Stop the development serve
 
 ## Ingest a screenshot
 
-For report-ready odds JSON, send the image with `data_type=odds` and its series code:
+For report-ready odds JSON, put the series code and data type in the URL:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
-  -F "image=@./odds-screenshot.png" \
-  -F "data_type=odds" \
-  -F "series_type=WCS"
+curl -X POST "http://127.0.0.1:8000/ingest/WCS/odds/" \
+  -F "image=@./odds-screenshot.png"
 ```
 
-For a scorecard image, use `data_type=scores`:
+For a scorecard image, use `scores` as the final URL segment:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
-  -F "image=@./scorecard-screenshot.png" \
-  -F "data_type=scores" \
-  -F "series_type=WCS"
+curl -X POST "http://127.0.0.1:8000/ingest/WCS/scores/" \
+  -F "image=@./scorecard-screenshot.png"
 ```
 
-For a schedule image, use `data_type=schedules`:
+For a schedule image, use `schedules` as the final URL segment:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
-  -F "image=@./schedule-screenshot.png" \
-  -F "data_type=schedules" \
-  -F "series_type=WCS"
+curl -X POST "http://127.0.0.1:8000/ingest/WCS/schedules/" \
+  -F "image=@./schedule-screenshot.png"
 ```
 
-`data_type` and `series_type` are required for every screenshot. `data_type` accepts `odds`, `scores`, or `schedules`. Each request saves JSON under the matching `data/ingested/{SERIES}/{data_type}/` folder. The response includes the saved path. Uploaded images are not retained.
+The ingestion URL format is `/ingest/{series_type}/{data_type}/`. The canonical `series_type` values are `WCS`, `LDS`, `LCS`, and `WS`; the `data_type` values are `odds`, `scores`, and `schedules`. Series aliases are listed in the [API reference](api-reference.md). Only the image is sent in the multipart body. Each request saves JSON under the matching `data/ingested/{series_type}/{data_type}/` folder. The response includes the saved path. Uploaded images are not retained.
