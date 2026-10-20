@@ -1,164 +1,59 @@
-# Hard9Stats MLB Playoffs
+# Hard 9 Stats - MLB Playoffs
 
-Hard 9 Stats MLB Playoffs data in ingestion and report generation.
+Hard 9 Stats provides analytics for MLB postseason sports-market stats. 
 
-## API Endpoints
+[Hard 9 Stats Website](https://www.hard9stats.com)
 
-- `GET /health`
-- `POST /ingest/screenshot`
-- `POST /reports/{series_type}/merge-json`
-- `POST /reports/{series_type}/generate-html`
-- `GET /reports/{series_type}/status`
+A Python FastAPI service for MLB postseason sports-market stats analytics report.
 
-## Directory Convention (Series Type)
+## Tech Stack
 
-Use a `series_type` path variable (for example `WCS`, `LDS`, `LCS`, `WS`) to separate ingested and report artifacts.
+| Area | Technology |
+| --- | --- |
+| API runtime | Python 3.14; FastAPI 0.141.1; Uvicorn 0.54.0 |
+| Validation and settings | Pydantic 2.13.5; Pydantic Settings 2.15.0 |
+| Screenshot uploads | `python-multipart` 0.0.32 |
+| Ollama client | Ollama `/api/chat` via HTTPX 0.28.1; server is configured separately |
+| Vision model | `qwen2.5vl:7b` by default |
+| Reasoning model | `gemma4:12b` by default |
+| API test suite | Pytest 9.1.1; FastAPI TestClient; isolated temporary directories; mocked Ollama calls |
 
-Series type definitions:
+## Documentation
 
-- `WCS` = `Wild Card Series`
-- `LDS` = `League Division Series`
-- `LCS` = `League Championship Series`
-- `WS` = `World Series`
+Start with the [documentation index](docs/index.md) for setup, configuration, API usage, report workflow, and deployment. The interactive API reference is available at `/docs` when the service is running.
 
-Recommended structure:
+## How it works
 
-- `data/ingested/<SERIES_TYPE>/odds/`
-- `data/ingested/<SERIES_TYPE>/schedules/`
-- `data/ingested/<SERIES_TYPE>/scores/`
-- `data/reports/<SERIES_TYPE>/`
+Screenshot ingestion extracts odds, scores, or schedules into JSON. User captures odds screenshots from sportsbook websites such as DraftKings and schedules & scores screenshots from sports websites such as ESPN. See sample files in [docs/samples](docs/samples).
 
-## Git Tracking for Data Folders
+Report merging combines those JSON inputs into a series report, and HTML generation renders the merged report.
 
-The repository uses top-level sentinel files to keep data directory structure in git while ignoring runtime data files:
+The service uses two local Ollama models:
 
-- `data/ingested/.keep`
-- `data/reports/.keep`
+- Vision: `qwen2.5vl:7b` by default, for screenshot extraction.
+- Reasoning: `gemma4:12b` by default, for merging report JSON.
 
-Git behavior:
+Configure them with `OLLAMA_VISION_MODEL` and `OLLAMA_REASONING_MODEL`. Both use the server URL in `OLLAMA_BASE_URL`. See `.env.example` and the [Quickstart](docs/quickstart.md) to install and configure Ollama.
 
-- Files under `data/ingested/` are ignored by default.
-- Files under `data/reports/` are ignored by default.
-- Files under `data/reports/assets/` are tracked (for example logos/images).
+## API at a glance
 
-## Setup
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Check that the service process is responding. |
+| `POST` | `/ingest/{series_type}/{data_type}/` | Extract screenshot data and save it to the matching series input folder. |
+| `POST` | `/reports/{series_type}/merge-json` | Merge the series' ingested JSON files. |
+| `POST` | `/reports/{series_type}/generate-html` | Generate HTML from the merged report. |
+| `GET` | `/reports/{series_type}/status` | Check merged JSON and generated HTML artifacts. |
 
-Use Python 3.14 only (any 3.14.x release). From the repository root, create a virtual environment and activate it. Activate the environment again whenever you open a new terminal.
+For screenshot ingestion, `series_type` is `WCS`, `LDS`, `LCS`, or `WS`; `data_type` is `odds`, `scores`, or `schedules`. Send the screenshot as the `image` multipart field. The former `/ingest/screenshot` endpoint has been removed. The `/reports` endpoint paths are unchanged. The [API reference](docs/api-reference.md) lists series aliases and request and response details.
 
-### Windows PowerShell
-
-```powershell
-py -3.14 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-### macOS / Linux
+Example: ingest an odds screenshot for the Wild Card Series.
 
 ```bash
-python3.14 -m venv .venv
-source .venv/bin/activate
+curl -X POST "http://127.0.0.1:8000/ingest/WCS/odds/" \
+  -F "image=@./odds-screenshot.png"
 ```
 
-With the virtual environment active, install the pinned runtime dependencies and the app in editable mode:
+Ingested files are stored under `data/ingested/{series_type}/{data_type}/`. Merged JSON and generated HTML are stored under `data/reports/{series_type}/`.
 
-```bash
-python -m pip install -r requirements.lock
-python -m pip install --no-deps -e .
-```
-
-For development and tests, use `requirements-dev.lock` instead; it includes the runtime lock and pinned test dependencies. Keep the lock files synchronized whenever dependencies change in `pyproject.toml`.
-
-The checked-in lock files target Windows with CPython 3.14. For deployment on another operating system, generate and maintain a lock resolved for that target rather than treating these files as cross-platform locks.
-
-Copy `.env.example` to `.env` and populate the agent settings if you plan to use screenshot ingestion:
-
-- `AZURE_AGENT_API_URL`
-- `AZURE_AGENT_API_KEY`
-- `AZURE_AGENT_MODEL`
-- Optional: `AZURE_AGENT_API_VERSION`
-
-## Run
-
-With the virtual environment active, start the development server from the repository root:
-
-```bash
-python -m uvicorn app.main:app --reload
-```
-
-The API is available at `http://127.0.0.1:8000`; full API specs are available in the [Swagger UI](http://127.0.0.1:8000/docs). Press `Ctrl+C` in the terminal to stop the server.
-
-## Ingestion Endpoint
-
-`POST /ingest/screenshot` accepts a screenshot image, sends it to an Azure AI Foundry-compatible agent endpoint, and stores the parsed JSON result in `data/ingested/`.
-
-Example:
-
-```bash
-curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
-  -H "accept: application/json" \
-  -H "Content-Type: multipart/form-data" \
-  -F "image=@./sample-screenshot.png"
-```
-
-Saved ingestion files contain:
-
-- `request_id`
-- `created_at`
-- `source_image_name`
-- `data`
-- `warnings`
-- `confidence`
-- `agent_metadata`
-
-## Report Generation (Two-Step API Flow)
-
-### Step 1: Merge schedules + scores + odds into one report JSON
-
-Endpoint: `POST /reports/{series_type}/merge-json`
-
-Behavior:
-
-- No request body is required.
-- The API automatically reads from:
-  - `data/ingested/<SERIES_TYPE>/odds/`
-  - `data/ingested/<SERIES_TYPE>/scores/`
-  - `data/ingested/<SERIES_TYPE>/schedules/` (optional; used if directory exists)
-- Output is always written to:
-  - `data/reports/<SERIES_TYPE>/report-merged.json`
-- Existing `.json` files in `data/reports/<SERIES_TYPE>/` are removed first, so only one merged JSON file is stored per series type.
-
-Request example:
-
-```bash
-curl -X POST "http://127.0.0.1:8000/reports/WCS/merge-json" \
-  -H "accept: application/json"
-```
-
-### Step 2: Generate HTML from merged report JSON
-
-Endpoint: `POST /reports/{series_type}/generate-html`
-
-Behavior:
-
-- No request body is required.
-- The API reads from:
-  - `data/reports/<SERIES_TYPE>/report-merged.json`
-- Output is always written to:
-  - `data/reports/<SERIES_TYPE>/report-<report_date>.html`
-
-Request example:
-
-```bash
-curl -X POST "http://127.0.0.1:8000/reports/WCS/generate-html" \
-  -H "accept: application/json"
-```
-
-Response includes:
-
-- `series_type`
-- `merged_json_path`
-- `html_report_path`
-- `report_date`
-- `games_count`
-
-
+Odds extraction JSON stores game objects in screenshot order in the top-level `games` array, alongside `warnings` and `confidence`. Each team's moneyline price is numeric `moneyline.odds`; trends are derived from the paired prices, with the lower numeric price marked Favorite and missing or equal prices marked `TBD`. Each game's total is stored once at `odds.total`, with `line`, `over_odds`, and `under_odds`, separate from the away and home team markets. Score and schedule extraction also stores `screenshot_date` when visible, and places postseason game number and league in `series.game` and `series.league`.

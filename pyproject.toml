@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "h9s-mlb-2026-playoffs"
-version = "0.1.0"
-description = "Hard 9 Stats MLB Playoffs data in ingestion and report generation."
+version = "1.0.0"
+description = "Hard9Stats MLB Playoffs ingestion and report generation service."
 readme = "README.md"
 requires-python = "==3.14.*"
 dependencies = [
@@ -22,8 +22,8 @@ dev = [
   "pytest==9.1.1",
 ]
 
-[tool.setuptools]
-packages = ["app"]
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
