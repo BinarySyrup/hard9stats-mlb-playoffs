@@ -7,11 +7,25 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
+from app.services.odds_normalization import normalize_moneyline_trends
+
+
+_SERIES_REPORT_TITLES = {
+    "WCS": "Wild Card Series",
+    "LDS": "League Division Series",
+    "LCS": "League Championship Series",
+    "WS": "World Series",
+}
+
 
 def _parse_start_time(value: str) -> tuple[str, str]:
     cleaned = value.replace(" ET", "").strip()
-    parsed = datetime.strptime(cleaned, "%Y-%m-%d %I:%M %p")
-    return parsed.strftime("%b %d, %Y"), parsed.strftime("%I:%M %p").lstrip("0")
+    try:
+        parsed = datetime.strptime(cleaned, "%Y-%m-%d %I:%M %p")
+        return parsed.strftime("%b %d, %Y"), parsed.strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        parsed = datetime.strptime(cleaned, "%Y-%m-%d")
+        return parsed.strftime("%b %d, %Y"), ""
 
 
 def _safe_parse_start_time(value: str | None) -> tuple[str, str]:
@@ -107,12 +121,17 @@ def _spread_covering_side(game_data: dict[str, Any]) -> str | None:
     return "away" if away_covers else "home"
 
 
+def _total_market_data(odds: dict[str, Any]) -> dict[str, Any]:
+    total = odds.get("total")
+    return total if isinstance(total, dict) else {}
+
+
 def _total_runs_difference(game_data: dict[str, Any]) -> Decimal | None:
     score = game_data.get("score") or {}
     odds = game_data.get("odds") or {}
     away_runs = (score.get("away") or {}).get("runs")
     home_runs = (score.get("home") or {}).get("runs")
-    total_line = ((odds.get("total_runs") or {}).get("line"))
+    total_line = _total_market_data(odds).get("line")
     away_value = _as_decimal(away_runs)
     home_value = _as_decimal(home_runs)
     line_value = _as_decimal(total_line)
@@ -242,7 +261,12 @@ def _summarize_betting(games: Any) -> dict[str, dict[str, int]]:
         odds = game_data.get("odds") or {}
         final_score = _final_score(game_data)
         for market_name, outcome_for in outcomes.items():
-            if not _has_odds_data(odds.get(market_name)):
+            market_data = (
+                _total_market_data(odds)
+                if market_name == "total_runs"
+                else odds.get(market_name)
+            )
+            if not _has_odds_data(market_data):
                 continue
             outcome = outcome_for(game_data, final_score)
             if outcome is not None:
@@ -310,30 +334,37 @@ def _render_row(
     game_number: int,
     game_data: dict[str, Any],
     matchup_label: str,
-    away_heading: str,
-    home_heading: str,
+    first_team_heading: str,
+    second_team_heading: str,
+    column_sides: tuple[str, str],
     include_team_headers: bool,
 ) -> str:
-    team_header_html = f'<thead><tr><th>{away_heading}</th><th>{home_heading}</th></tr></thead>' if include_team_headers else ""
+    team_header_html = f'<thead><tr><th>{first_team_heading}</th><th>{second_team_heading}</th></tr></thead>' if include_team_headers else ""
     total_header_html = '<thead><tr><th>Under</th><th>Runs</th><th>Over</th></tr></thead>' if include_team_headers else ""
 
     odds = game_data["odds"]
-    game_date, game_time = _safe_parse_start_time(game_data.get("start_time"))
-    moneyline_away = odds["moneyline"]["away"]["trend"]
-    moneyline_home = odds["moneyline"]["home"]["trend"]
-    moneyline_away_score = _score_markup(game_data, "away")
-    moneyline_home_score = _score_markup(game_data, "home")
+    game_date, game_time = _safe_parse_start_time(game_data.get("start_time") or game_data.get("date"))
     score_leader = _score_leader(game_data)
-    away_score_class = ' class="moneyline-score-leader"' if score_leader == "away" else ""
-    home_score_class = ' class="moneyline-score-leader"' if score_leader == "home" else ""
-    spread_away = odds["spread"]["away"]["trend"]
-    spread_home = odds["spread"]["home"]["trend"]
-    spread_away_line = odds["spread"]["away"].get("line")
-    spread_home_line = odds["spread"]["home"].get("line")
     spread_cover = _spread_covering_side(game_data)
-    away_spread_class = ' class="spread-cover"' if spread_cover == "away" else ""
-    home_spread_class = ' class="spread-cover"' if spread_cover == "home" else ""
-    total_line = _normalize_total_line(odds["total_runs"].get("line"))
+    moneyline_cells: list[str] = []
+    spread_cells: list[str] = []
+    for side in column_sides:
+        moneyline_trend = odds["moneyline"][side]["trend"]
+        moneyline_score = _score_markup(game_data, side)
+        score_class = ' class="moneyline-score-leader"' if score_leader == side else ""
+        location = "Away" if side == "away" else "Home"
+        moneyline_cells.append(
+            f'<td{score_class}><div class="moneyline-value-row"><span class="{_trend_class(moneyline_trend)}">{moneyline_trend}</span>{moneyline_score}</div><span class="location-value">{location}</span></td>'
+        )
+
+        spread_trend = odds["spread"][side]["trend"]
+        spread_line = odds["spread"][side].get("line")
+        spread_class = ' class="spread-cover"' if spread_cover == side else ""
+        spread_cells.append(
+            f'<td{spread_class}><span class="{_trend_class(spread_trend)}">{spread_trend}{_spread_line_suffix(spread_trend, spread_line)}</span><span class="location-value">{location}</span></td>'
+        )
+
+    total_line = _normalize_total_line(_total_market_data(odds).get("line"))
     total_difference = _total_runs_difference(game_data)
     total_cover = _total_runs_covering_side(total_difference)
     under_cover_class = ' class="total-runs-cover"' if total_cover == "under" else ""
@@ -346,16 +377,14 @@ def _render_row(
         f'<table class="subtable" aria-label="{matchup_label} game {game_number} moneyline">'
         f'{team_header_html}'
         '<tbody><tr>'
-        f'<td{away_score_class}><div class="moneyline-value-row"><span class="{_trend_class(moneyline_away)}">{moneyline_away}</span>{moneyline_away_score}</div><span class="location-value">Away</span></td>'
-        f'<td{home_score_class}><div class="moneyline-value-row"><span class="{_trend_class(moneyline_home)}">{moneyline_home}</span>{moneyline_home_score}</div><span class="location-value">Home</span></td>'
+        f'{"".join(moneyline_cells)}'
         '</tr></tbody></table>'
     )
     spread_table = (
         f'<table class="subtable" aria-label="{matchup_label} game {game_number} spread">'
         f'{team_header_html}'
         '<tbody><tr>'
-        f'<td{away_spread_class}><span class="{_trend_class(spread_away)}">{spread_away}{_spread_line_suffix(spread_away, spread_away_line)}</span><span class="location-value">Away</span></td>'
-        f'<td{home_spread_class}><span class="{_trend_class(spread_home)}">{spread_home}{_spread_line_suffix(spread_home, spread_home_line)}</span><span class="location-value">Home</span></td>'
+        f'{"".join(spread_cells)}'
         '</tr></tbody></table>'
     )
     total_value_class = "trend-value tbd" if total_line == "TBD" else "trend-value"
@@ -387,19 +416,70 @@ def _render_row(
     )
 
 
+def _series_group_key(game_data: dict[str, Any]) -> tuple[str, ...]:
+    teams = game_data.get("teams") or {}
+    team_names = []
+    for side in ("away", "home"):
+        team = teams.get(side) or {}
+        abbreviation = team.get("abbr")
+        if abbreviation and str(abbreviation).strip().casefold() != "tbd":
+            name = abbreviation
+        else:
+            name = team.get("full_name") or team.get("name")
+        if not name:
+            team_names = []
+            break
+        team_names.append("".join(character for character in str(name).casefold() if character.isalnum()))
+
+    if len(team_names) == 2:
+        return ("teams", *sorted(team_names))
+
+    series_id = str(game_data.get("series_id") or "").strip().casefold()
+    if " at " in series_id:
+        participants = [part.strip() for part in series_id.split(" at ", maxsplit=1)]
+        return ("series_id", *sorted(participants))
+
+    id_parts = series_id.split("_")
+    if len(id_parts) >= 3:
+        return ("series_id", "_".join(id_parts[:-2]), *sorted(id_parts[-2:]))
+    return ("series_id", series_id)
+
+
+def _team_identity(team: dict[str, Any]) -> str:
+    abbreviation = team.get("abbr")
+    if abbreviation and str(abbreviation).strip().casefold() != "tbd":
+        name = abbreviation
+    else:
+        name = team.get("full_name") or team.get("name")
+    return "".join(character for character in str(name or "").casefold() if character.isalnum())
+
+
 def _render_game_block(section_id: str, series_games: dict[int, dict[str, Any]]) -> str:
     game_one = series_games.get(1) or next(iter(series_games.values()))
-    away_full = game_one["teams"]["away"]["full_name"]
-    home_full = game_one["teams"]["home"]["full_name"]
+    game_one_teams = game_one.get("teams") or {}
+    game_one_away = game_one_teams.get("away") or {}
+    game_one_home = game_one_teams.get("home") or {}
+    away_full = game_one_away.get("full_name") or game_one_away.get("name") or "Away"
+    home_full = game_one_home.get("full_name") or game_one_home.get("name") or "Home"
+    game_one_away_identity = _team_identity(game_one_away)
     matchup_label = f"{away_full} at {home_full}"
 
     header_cols = '<thead><tr><th class="col-game">Game</th><th class="col-moneyline">Moneyline</th><th class="col-spread">Spread</th><th class="col-total-runs">Total Runs</th></tr></thead>'
 
     rows: list[str] = []
-    for game_number in (1, 2, 3):
+    for game_number in sorted(series_games):
         game_data = series_games.get(game_number)
         if game_data is None or not _has_odds_data(game_data.get("odds")):
             continue
+        game_teams = game_data.get("teams") or {}
+        game_away = game_teams.get("away") or {}
+        game_home = game_teams.get("home") or {}
+        if _team_identity(game_away) == game_one_away_identity:
+            column_sides = ("away", "home")
+        elif _team_identity(game_home) == game_one_away_identity:
+            column_sides = ("home", "away")
+        else:
+            column_sides = ("away", "home")
         rows.append(
             _render_row(
                 game_number,
@@ -407,6 +487,7 @@ def _render_game_block(section_id: str, series_games: dict[int, dict[str, Any]])
                 matchup_label,
                 away_full,
                 home_full,
+                column_sides,
                 include_team_headers=not rows,
             )
         )
@@ -434,21 +515,22 @@ def _render_game_block(section_id: str, series_games: dict[int, dict[str, Any]])
 
 
 def render_report_html(merged_payload: dict[str, Any]) -> str:
+    normalize_moneyline_trends(merged_payload)
     report_date_value = merged_payload.get("generated_report_date") or datetime.now().astimezone().strftime("%Y-%m-%d")
     report_date = datetime.strptime(report_date_value, "%Y-%m-%d")
     report_date_long = report_date.strftime("%B %d, %Y")
 
-    grouped: dict[str, dict[int, dict[str, Any]]] = defaultdict(dict)
-    ordered_series: list[str] = []
+    grouped: dict[tuple[str, ...], dict[int, dict[str, Any]]] = defaultdict(dict)
+    ordered_series: list[tuple[str, ...]] = []
     for game in merged_payload["games"]:
-        series_id = game["series_id"]
-        if series_id not in grouped:
-            ordered_series.append(series_id)
-        grouped[series_id][int(game["game_number"])] = game
+        series_key = _series_group_key(game)
+        if series_key not in grouped:
+            ordered_series.append(series_key)
+        grouped[series_key][int(game["game_number"])] = game
 
     sections: list[str] = []
-    for index, series_id in enumerate(ordered_series, start=1):
-        section_html = _render_game_block(f"g{index}", grouped[series_id])
+    for index, series_key in enumerate(ordered_series, start=1):
+        section_html = _render_game_block(f"g{index}", grouped[series_key])
         if section_html:
             sections.append(section_html)
 
@@ -458,7 +540,8 @@ def render_report_html(merged_payload: dict[str, Any]) -> str:
         "Overall Betting Totals",
         2,
     )
-    report_type = "Wild Card Series"
+    series_type = str(merged_payload.get("series_type") or "WCS").strip().upper()
+    report_type = _SERIES_REPORT_TITLES.get(series_type, _SERIES_REPORT_TITLES["WCS"])
 
     return f"""<!DOCTYPE html>
 <html lang=\"en\">

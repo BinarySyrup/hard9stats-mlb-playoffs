@@ -4,10 +4,8 @@ from collections.abc import Mapping
 from typing import Any
 
 import httpx
-from pydantic import ValidationError
 
 from app.core.config import get_llm_prompt_path, settings
-from app.models.contracts import OddsExtraction, ScoresSchedulesExtraction
 
 
 class AgentClientError(Exception):
@@ -16,19 +14,19 @@ class AgentClientError(Exception):
 
 class OllamaAgentClient:
     _structured_extractions = {
-        "odds": ("mlb-data-ingestion-odds.txt", OddsExtraction),
-        "scores-schedules": (
-            "mlb-data-ingestion-schedules-scores.txt",
-            ScoresSchedulesExtraction,
-        ),
+        "odds": "mlb-data-ingestion-odds.txt",
+        "scores": "mlb-data-ingestion-scores.txt",
+        "schedules": "mlb-data-ingestion-schedules.txt",
     }
 
     def __init__(self) -> None:
         self._base_url = settings.ollama_base_url.strip().rstrip("/")
         if not self._base_url:
             raise AgentClientError("Missing OLLAMA_BASE_URL in environment configuration.")
-        if not settings.ollama_model.strip():
-            raise AgentClientError("Missing OLLAMA_MODEL in environment configuration.")
+        if not settings.ollama_vision_model.strip():
+            raise AgentClientError("Missing OLLAMA_VISION_MODEL in environment configuration.")
+        if not settings.ollama_reasoning_model.strip():
+            raise AgentClientError("Missing OLLAMA_REASONING_MODEL in environment configuration.")
 
     async def parse_structured_screenshot(
         self,
@@ -37,11 +35,10 @@ class OllamaAgentClient:
         extraction_type: str,
         context: str = "",
     ) -> dict[str, Any]:
-        extraction = self._structured_extractions.get(extraction_type)
-        if extraction is None:
+        filename = self._structured_extractions.get(extraction_type)
+        if filename is None:
             raise AgentClientError(f"Unsupported screenshot extraction type: {extraction_type}.")
 
-        filename, response_model = extraction
         prompt_path = get_llm_prompt_path(filename)
         try:
             prompt = prompt_path.read_text(encoding="utf-8")
@@ -54,28 +51,56 @@ class OllamaAgentClient:
         return await self._parse_image(
             image_bytes=image_bytes,
             prompt=prompt,
-            response_model=response_model,
+            model=settings.ollama_vision_model,
         )
+
+    async def merge_json_files(self, combined_json: dict[str, Any]) -> str:
+        prompt_path = get_llm_prompt_path("mlb-data-merge.txt")
+        try:
+            prompt = prompt_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise AgentClientError(f"Unable to read Ollama prompt file: {prompt_path}.") from exc
+
+        prompt = f"{prompt.rstrip()}\n{json.dumps(combined_json, indent=2, ensure_ascii=False)}"
+        return await self._request_chat(prompt=prompt, model=settings.ollama_reasoning_model)
 
     async def _parse_image(
         self,
         image_bytes: bytes,
         prompt: str,
-        response_model: type[OddsExtraction] | type[ScoresSchedulesExtraction],
+        model: str,
     ) -> dict[str, Any]:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        schema = response_model.model_json_schema()
-        prompt = f"{prompt}\n\nReturn JSON matching this schema:\n{json.dumps(schema, ensure_ascii=False)}"
+        content = await self._request_chat(prompt=prompt, model=model, images=[image_b64])
+
+        try:
+            extraction = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise AgentClientError("Ollama response message content was not valid JSON.") from exc
+
+        if not isinstance(extraction, dict):
+            raise AgentClientError("Ollama JSON response must be an object.")
+
+        return extraction
+
+    async def _request_chat(
+        self,
+        prompt: str,
+        model: str,
+        images: list[str] | None = None,
+    ) -> str:
+        message: dict[str, Any] = {
+            "role": "user",
+            "content": prompt,
+        }
+        if images:
+            message["images"] = images
+
         request_payload: dict[str, Any] = {
-            "model": settings.ollama_model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt,
-                    "images": [image_b64],
-                }
-            ],
-            "format": schema,
+            "model": model,
+            "messages": [message],
+            "format": "json",
+            "think": False,
             "stream": False,
             "options": {"temperature": 0},
         }
@@ -109,11 +134,17 @@ class OllamaAgentClient:
             raise AgentClientError("Ollama response did not contain a message.")
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
-            raise AgentClientError("Ollama response did not contain message content.")
-
-        try:
-            extraction = response_model.model_validate_json(content)
-        except ValidationError as exc:
-            raise AgentClientError("Ollama output did not match the requested extraction schema.") from exc
-
-        return extraction.model_dump(mode="json")
+            diagnostics = []
+            done_reason = payload.get("done_reason")
+            if done_reason:
+                diagnostics.append(f"done_reason={done_reason}")
+            thinking = message.get("thinking")
+            diagnostics.append(
+                f"thinking_present={isinstance(thinking, str) and bool(thinking.strip())}"
+            )
+            eval_count = payload.get("eval_count")
+            if isinstance(eval_count, int):
+                diagnostics.append(f"eval_count={eval_count}")
+            detail = f" ({', '.join(diagnostics)})" if diagnostics else ""
+            raise AgentClientError(f"Ollama response did not contain message content{detail}.")
+        return content

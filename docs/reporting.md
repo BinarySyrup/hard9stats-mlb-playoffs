@@ -1,15 +1,15 @@
 # Report Data and Workflow
 
-## Series codes
+## `series_type` values
 
-| Code | Series |
+| `series_type` | Series |
 | --- | --- |
 | `WCS` | Wild Card Series |
 | `LDS` | League Division Series |
 | `LCS` | League Championship Series |
 | `WS` | World Series |
 
-Use these uppercase codes in directory names and API paths.
+Use these uppercase `series_type` codes in API paths and directory names. The API reference lists the accepted aliases.
 
 ## Directory layout
 
@@ -18,8 +18,10 @@ Run the service from the repository root. Report paths are relative to its worki
 ```text
 data/
   llm-prompts/
+    mlb-data-merge.txt
     mlb-data-ingestion-odds.txt
-    mlb-data-ingestion-schedules-scores.txt
+    mlb-data-ingestion-schedules.txt
+    mlb-data-ingestion-scores.txt
   ingested/
     WCS/
       odds/
@@ -31,21 +33,21 @@ data/
       report-YYYY-MM-DD.html
 ```
 
-Repeat the series folders for `LDS`, `LCS`, and `WS`. Place source `.json` files directly in each input folder. The merge operation requires the odds and scores directories to exist; the schedules directory is optional.
+Repeat the series folders for `LDS`, `LCS`, and `WS`. Place source `.json` files directly in one or more input folders. The merge endpoint reads every file matching `data/ingested/{series_type}/*/*.json`; the folders can be absent, but the endpoint returns `404` if it finds no input JSON files.
 
-Screenshot ingestion uses the prompt files in `data/llm-prompts`. Select `data_type=odds` or `data_type=scores-schedules` and provide a `series_type` when calling `POST /ingest/screenshot`. Odds JSON is written to the series' `odds/` folder; the combined score/schedule JSON is written to both `scores/` and `schedules/` so the merger can use it for each role. These files contain `games` at the root or under `data.games` and are schema-validated before saving.
+Screenshot ingestion uses the configured Ollama vision model and the prompt file matching the `data_type` URL segment. Call `POST /ingest/{series_type}/{data_type}/`, using `odds`, `scores`, or `schedules` for the data type. Each request parses the model response as a JSON object and writes it to the matching series input folder: `odds/`, `scores/`, or `schedules/`. The prompt describes the expected fields; the extraction is not checked against a strict schema before saving.
 
-Every screenshot-ingestion request requires a data type and series type so its output is validated with the matching schema and written directly to the report input folders.
+Every screenshot-ingestion request requires a data type and series type so the matching prompt can be selected and the output written directly to the report input folders.
 
 ## Merge, then generate
 
-1. Place odds and score JSON files in the series folders; add schedules when available.
+1. Place schedule, odds, and score JSON files in the matching series folders.
 2. Call `POST /reports/{series_type}/merge-json`.
-3. Review `data/reports/{SERIES}/report-merged.json` and its `games` list.
+3. Review `data/reports/{series_type}/report-merged.json` and its `games` list.
 4. Call `POST /reports/{series_type}/generate-html`.
 5. Call `GET /reports/{series_type}/status` to check the output paths and modification times.
 
-The merge writes `data/reports/{SERIES}/report-merged.json`. **Before writing, it deletes existing `.json` files in that series' report directory.** Keep other JSON artifacts elsewhere.
+The merge sends all input files and `data/llm-prompts/mlb-data-merge.txt` to the configured Ollama reasoning model. It saves the model response directly to `data/reports/{series_type}/report-merged.json` without schema validation. **Before writing, it deletes existing `.json` files in that series' report directory.** Keep other JSON artifacts elsewhere.
 
 ## Missing data and rendered rows
 

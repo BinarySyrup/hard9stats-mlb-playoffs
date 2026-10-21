@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, File, Form, HTTPException, Path as ApiPath, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Path as ApiPath, UploadFile, status
 from pydantic import ValidationError
 
 from app.models.contracts import (
@@ -15,9 +15,9 @@ from app.models.contracts import (
     ReportStatusResponse,
 )
 from app.scripts.generate_report_html import render_report_html
-from app.scripts.merge_report_data import merge_report_data
-from app.services.agent_client import AgentClientError
+from app.services.agent_client import AgentClientError, OllamaAgentClient
 from app.services.ingestion_service import IngestionService
+from app.services.odds_normalization import normalize_moneyline_trends
 
 router = APIRouter()
 
@@ -52,11 +52,23 @@ async def health_check() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
-@router.post("/ingest/screenshot", response_model=IngestionResponse)
+@router.post(
+    "/ingest/{series_type}/{data_type}/",
+    response_model=IngestionResponse,
+    summary="Ingest a screenshot for a series and data type",
+)
 async def ingest_screenshot(
+    series_type: str = ApiPath(
+        ...,
+        description="Series type code. Accepted values: WCS, LDS, LCS, WS (aliases supported, e.g. wild-card).",
+        examples=["WCS"],
+    ),
+    data_type: Literal["odds", "scores", "schedules"] = ApiPath(
+        ...,
+        description="Screenshot data type and extraction prompt to use.",
+        examples=["odds"],
+    ),
     image: UploadFile = File(...),
-    data_type: Literal["odds", "scores-schedules"] = Form(...),
-    series_type: str = Form(...),
 ) -> IngestionResponse:
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(
@@ -113,11 +125,11 @@ async def ingest_screenshot(
 @router.post(
     "/reports/{series_type}/merge-json",
     response_model=MergeReportResponse,
-    summary="Merge schedule, score, and odds JSON into one report JSON",
+    summary="Merge schedule, score, and odds JSON with Ollama into one report JSON",
     response_description="Merged report JSON metadata and output path.",
     responses={
-        404: {"description": "Required input directory was not found."},
-        422: {"description": "Validation error for path params."},
+        404: {"description": "No input JSON files were found for this series type."},
+        422: {"description": "An input JSON file is invalid."},
     },
 )
 async def merge_report_json(
@@ -130,21 +142,58 @@ async def merge_report_json(
     series_key = _series_key(series_type)
 
     series_ingested_dir = Path("data/ingested") / series_key
-    odds_dir = series_ingested_dir / "odds"
-    scores_dir = series_ingested_dir / "scores"
-    schedules_dir = series_ingested_dir / "schedules"
+    input_files = sorted(series_ingested_dir.glob("*/*.json"))
+    if not input_files:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No input JSON files found under {series_ingested_dir}.",
+        )
 
-    if not odds_dir.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Odds directory not found: {odds_dir}")
-    if not scores_dir.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Scores directory not found: {scores_dir}")
+    files_by_type: dict[str, list[dict[str, object]]] = {
+        "odds": [],
+        "scores": [],
+        "schedules": [],
+    }
+    for input_file in input_files:
+        category = input_file.parent.name
+        try:
+            file_payload = json.loads(input_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Input file is not valid JSON: {input_file}.",
+            ) from exc
+        files_by_type.setdefault(category, []).append(
+            {
+                "filename": str(input_file.relative_to(series_ingested_dir)).replace("\\", "/"),
+                "contents": file_payload,
+            }
+        )
 
-    merged_payload = merge_report_data(
-        odds_dir=odds_dir,
-        scores_dir=scores_dir,
-        schedules_dir=schedules_dir if schedules_dir.exists() else None,
-    )
-    merged_payload["series_type"] = series_key
+    combined_json = {
+        "series_type": series_key,
+        "files": files_by_type,
+    }
+
+    try:
+        agent_client = OllamaAgentClient()
+        merged_json_text = await agent_client.merge_json_files(combined_json)
+    except AgentClientError as exc:
+        message = str(exc)
+        status_code = status.HTTP_502_BAD_GATEWAY
+        if "timed out" in message.lower():
+            status_code = status.HTTP_504_GATEWAY_TIMEOUT
+        if "missing ollama" in message.lower() or "prompt file" in message.lower():
+            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        raise HTTPException(status_code=status_code, detail=message) from exc
+
+    try:
+        response_metadata = json.loads(merged_json_text)
+    except json.JSONDecodeError:
+        response_metadata = None
+    if isinstance(response_metadata, dict):
+        normalize_moneyline_trends(response_metadata)
+        merged_json_text = json.dumps(response_metadata, indent=2, ensure_ascii=False)
 
     output_dir = Path(f"data/reports/{series_key}")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -152,12 +201,22 @@ async def merge_report_json(
         existing_json.unlink(missing_ok=True)
 
     output_path = output_dir / "report-merged.json"
-    output_path.write_text(json.dumps(merged_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    output_path.write_text(merged_json_text, encoding="utf-8")
+
+    # Normalize Moneyline trends from prices; other model fields remain unvalidated.
+    report_date = "latest"
+    games_count = 0
+    if isinstance(response_metadata, dict):
+        if isinstance(response_metadata.get("report_date"), str):
+            report_date = response_metadata["report_date"]
+        games = response_metadata.get("games")
+        if isinstance(games, list):
+            games_count = len(games)
 
     return MergeReportResponse(
         series_type=series_key,
-        report_date=merged_payload.get("report_date", "latest"),
-        games_count=len(merged_payload.get("games", [])),
+        report_date=report_date,
+        games_count=games_count,
         merged_json_path=str(output_path).replace("\\", "/"),
     )
 

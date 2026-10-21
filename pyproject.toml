@@ -9,11 +9,11 @@ description = "Hard9Stats MLB Playoffs ingestion and report generation service."
 readme = "README.md"
 requires-python = "==3.14.*"
 dependencies = [
-  "fastapi==0.141.1",
+  "fastapi==0.157.0",
   "uvicorn[standard]==0.54.0",
   "httpx==0.28.1",
-  "pydantic==2.13.5",
-  "pydantic-settings==2.15.0",
+  "pydantic==2.14.1",
+  "pydantic-settings==2.16.1",
   "python-multipart==0.0.32",
 ]
 

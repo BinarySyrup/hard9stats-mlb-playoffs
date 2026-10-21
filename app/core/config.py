@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     app_name: str = Field(default="Hard9Stats MLB Playoffs API", alias="APP_NAME")
     app_env: str = Field(default="dev", alias="APP_ENV")
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
-    ollama_model: str = Field(default="gemma4:26b", alias="OLLAMA_MODEL")
+    ollama_vision_model: str = Field(default="qwen2.5vl:7b", alias="OLLAMA_VISION_MODEL")
+    ollama_reasoning_model: str = Field(default="gemma4:12b", alias="OLLAMA_REASONING_MODEL")
     agent_timeout_seconds: float = Field(default=45.0, alias="AGENT_TIMEOUT_SECONDS")
 
 

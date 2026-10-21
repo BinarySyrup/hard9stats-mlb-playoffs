@@ -16,7 +16,7 @@ Start without development reload mode:
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Keep the process working directory at the repository root. Persist `data/ingested/` and `data/reports/` without mounting over `data/llm-prompts/`; report paths are relative to the working directory. Back up the runtime data volumes according to your retention needs. The application must be able to reach the Ollama server at `OLLAMA_BASE_URL`; when running in a container, `localhost` refers to that container, not the host running Ollama.
+Keep the process working directory at the repository root. Persist `data/ingested/` and `data/reports/` without mounting over `data/llm-prompts/`; report paths are relative to the working directory. Back up the runtime data volumes according to your retention needs. The application must be able to reach the Ollama server at `OLLAMA_BASE_URL`, with the configured vision and reasoning models available there; when running in a container, `localhost` refers to that container, not the host running Ollama.
 
 Include the prompt files under `data/llm-prompts` in the deployed application. Typed screenshot ingestion fails if its selected prompt file is unavailable.
 
