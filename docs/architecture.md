@@ -12,36 +12,38 @@ Prompts are read from `data/llm-prompts/`. Ingested JSON and generated reports a
 ## Component and data flow
 
 ```mermaid
-flowchart LR
-    Client[API client]
-    Routes[FastAPI routes]
-    Ingestion[IngestionService]
-    Agent[OllamaAgentClient]
-    Ollama[Ollama server]
-    Prompts[(data/llm-prompts)]
-    Inputs[(data/ingested)]
-    Reports[(data/reports)]
-    Renderer[HTML renderer]
+flowchart TB
+    Client["API client"]
+    Routes["FastAPI routes"]
+    Ingestion["IngestionService"]
+    Agent["OllamaAgentClient"]
+    Renderer["HTML renderer"]
+    Ollama["Ollama server<br/>vision and reasoning models"]
+    Prompts[("data/llm-prompts")]
+    Inputs[("data/ingested")]
+    Reports[("data/reports")]
 
-    Client -->|POST screenshot| Routes
-    Routes --> Ingestion
-    Ingestion --> Agent
-    Prompts --> Agent
-    Agent -->|vision model: prompt and image| Ollama
-    Ollama -->|extracted JSON| Agent
-    Agent --> Ingestion
-    Ingestion -->|save by series and data type| Inputs
-    Ingestion -->|response metadata and saved paths| Routes
-    Routes -->|POST merge-json| Agent
-    Inputs -->|all series JSON files| Agent
-    Prompts -->|merge prompt| Agent
-    Agent -->|reasoning model: prompt and JSON| Ollama
-    Ollama -->|merged JSON| Agent
-    Agent -->|save merged report| Reports
-    Routes -->|POST generate-html| Renderer
-    Reports -->|merged JSON| Renderer
-    Renderer -->|dated HTML report| Reports
-    Routes -->|GET status| Reports
+    Client --> Routes
+
+    Routes -->|"POST screenshot"| Ingestion
+    Ingestion -->|"image and extraction prompt"| Agent
+    Agent <-->|"vision model: prompt and image<br/>returns extracted JSON"| Ollama
+    Agent -->|"extracted JSON"| Ingestion
+    Ingestion -->|"save by series and data type"| Inputs
+    Ingestion -->|"response metadata and saved paths"| Routes
+
+    Routes -->|"POST merge-json"| Agent
+    Inputs -->|"all series JSON files"| Agent
+    Agent <-->|"reasoning model: prompt and JSON<br/>returns merged JSON"| Ollama
+    Agent -->|"save merged report"| Reports
+
+    Routes -->|"POST generate-html"| Renderer
+    Reports -->|"merged JSON"| Renderer
+    Renderer -->|"dated HTML report"| Reports
+
+    Routes -->|"GET status"| Reports
+
+    Prompts -.->|"extraction and merge prompts"| Agent
 ```
 
 ## Screenshot ingestion
