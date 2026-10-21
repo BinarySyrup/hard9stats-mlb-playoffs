@@ -1,10 +1,16 @@
 # Hard 9 Stats - MLB Playoffs
 
-Hard 9 Stats provides analytics for MLB postseason sports-market stats. 
+Hard 9 Stats is a sports-market stats analytics report for MLB postseason games. It provides insights into the odds, scores, and schedules of games, helping fans and analysts make informed decisions.
 
 [Hard 9 Stats Website](https://www.hard9stats.com)
 
-A Python FastAPI service for MLB postseason sports-market stats analytics report.
+## Architecture
+
+![Hard 9 Stats Architecture](docs/images/architecture-v1.png)
+
+The static diagram shows the architecture of the Hard 9 Stats service, which includes the API runtime, validation and settings, screenshot uploads, Ollama client, vision model, reasoning model, and API test suite.
+
+Detailed architecture is here: [architecture.md](docs/architecture.md)
 
 ## Tech Stack
 
@@ -46,13 +52,6 @@ Configure them with `OLLAMA_VISION_MODEL` and `OLLAMA_REASONING_MODEL`. Both use
 | `GET` | `/reports/{series_type}/status` | Check merged JSON and generated HTML artifacts. |
 
 For screenshot ingestion, `series_type` is `WCS`, `LDS`, `LCS`, or `WS`; `data_type` is `odds`, `scores`, or `schedules`. Send the screenshot as the `image` multipart field. The former `/ingest/screenshot` endpoint has been removed. The `/reports` endpoint paths are unchanged. The [API reference](docs/api-reference.md) lists series aliases and request and response details.
-
-Example: ingest an odds screenshot for the Wild Card Series.
-
-```bash
-curl -X POST "http://127.0.0.1:8000/ingest/WCS/odds/" \
-  -F "image=@./odds-screenshot.png"
-```
 
 Ingested files are stored under `data/ingested/{series_type}/{data_type}/`. Merged JSON and generated HTML are stored under `data/reports/{series_type}/`.
 
