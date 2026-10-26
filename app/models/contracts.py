@@ -1,13 +1,148 @@
-from datetime import datetime
-from typing import Any
+from datetime import date, datetime
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
+ConfidenceScore = Annotated[float, Field(ge=0, le=1)]
+
+
 class ConfidencePayload(BaseModel):
     overall: float | None = None
     fields: dict[str, float] = Field(default_factory=dict)
+
+
+class StructuredExtraction(BaseModel):
+    model_config = {"extra": "forbid"}
+
+
+class ExtractionConfidence(StructuredExtraction):
+    overall: float = Field(ge=0, le=1)
+    fields: dict[str, ConfidenceScore]
+
+
+class ExtractionAgentMetadata(StructuredExtraction):
+    migrated_from_legacy_schema: bool
+
+
+class OddsTeam(StructuredExtraction):
+    name: str
+
+
+class OddsRunLine(StructuredExtraction):
+    line: float | None
+    odds: float | None
+    trend: Literal["Favorite", "Underdog", "TBD"]
+
+
+class OddsMoneyline(StructuredExtraction):
+    odds: float | None
+    trend: Literal["Favorite", "Underdog", "TBD"]
+
+
+class GameTotal(StructuredExtraction):
+    line: float | None
+    over_odds: float | None
+    under_odds: float | None
+
+
+class AwayOdds(StructuredExtraction):
+    run_line: OddsRunLine
+    moneyline: OddsMoneyline
+
+
+class HomeOdds(StructuredExtraction):
+    run_line: OddsRunLine
+    moneyline: OddsMoneyline
+
+
+class GameOdds(StructuredExtraction):
+    away: AwayOdds
+    home: HomeOdds
+    total: GameTotal
+
+
+class OddsGame(StructuredExtraction):
+    date: date | None
+    away_team: OddsTeam
+    home_team: OddsTeam
+    odds: GameOdds
+    series_id: str | None = Field(
+        description=(
+            "Format as SERIES_{away_abbreviation}_{home_abbreviation} using abbreviations shown in the screenshot. "
+            "Use null if either abbreviation cannot be determined reliably."
+        )
+    )
+
+
+class OddsExtraction(StructuredExtraction):
+    games: list[OddsGame]
+    warnings: list[str]
+    confidence: ExtractionConfidence
+
+
+class ScoreTeam(StructuredExtraction):
+    name: str
+    runs: int | None
+
+
+class ScoreSeries(StructuredExtraction):
+    league: str | None
+    game: int | None
+    summary: str | None
+
+
+class ScoreGame(StructuredExtraction):
+    date: date | None
+    status: str | None
+    away_team: ScoreTeam
+    home_team: ScoreTeam
+    series: ScoreSeries | None
+    series_id: str | None = Field(
+        description=(
+            "Format as SERIES_{away_abbreviation}_{home_abbreviation} using abbreviations shown in the screenshot. "
+            "Use null if either abbreviation cannot be determined reliably."
+        )
+    )
+
+
+class ScoresExtraction(StructuredExtraction):
+    screenshot_date: date | None
+    games: list[ScoreGame]
+    warnings: list[str]
+    confidence: ExtractionConfidence
+
+
+class ScheduleTeam(StructuredExtraction):
+    name: str
+
+
+class ScheduleSeries(StructuredExtraction):
+    league: str | None
+    game: int | None
+    summary: str | None
+
+
+class ScheduleGame(StructuredExtraction):
+    date: date | None
+    status: str | None
+    away_team: ScheduleTeam
+    home_team: ScheduleTeam
+    series_id: str | None = Field(
+        description=(
+            "Format as SERIES_{away_abbreviation}_{home_abbreviation} using abbreviations shown in the screenshot. "
+            "Use null if either abbreviation cannot be determined reliably."
+        )
+    )
+    series: ScheduleSeries | None
+
+
+class SchedulesExtraction(StructuredExtraction):
+    screenshot_date: date | None
+    games: list[ScheduleGame]
+    warnings: list[str]
+    confidence: ExtractionConfidence
 
 
 class IngestionEnvelope(BaseModel):
@@ -22,6 +157,9 @@ class IngestionEnvelope(BaseModel):
 
 class IngestionResponse(IngestionEnvelope):
     saved_file_path: str
+    saved_file_paths: list[str] = Field(default_factory=list)
+    extraction_type: str
+    series_type: str
 
 
 class MergeReportResponse(BaseModel):

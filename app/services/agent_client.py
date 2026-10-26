@@ -1,128 +1,150 @@
 import base64
 import json
 from collections.abc import Mapping
-from json import JSONDecodeError
 from typing import Any
 
 import httpx
 
-from app.core.config import settings
+from app.core.config import get_llm_prompt_path, settings
 
 
 class AgentClientError(Exception):
     pass
 
 
-def _extract_json_block(candidate_text: str) -> dict[str, Any]:
-    try:
-        return json.loads(candidate_text)
-    except JSONDecodeError:
-        pass
+class OllamaAgentClient:
+    _structured_extractions = {
+        "odds": "mlb-data-ingestion-odds.txt",
+        "scores": "mlb-data-ingestion-scores.txt",
+        "schedules": "mlb-data-ingestion-schedules.txt",
+    }
 
-    fenced_prefix = "```json"
-    if fenced_prefix in candidate_text:
-        start = candidate_text.find(fenced_prefix)
-        end = candidate_text.find("```", start + len(fenced_prefix))
-        if start >= 0 and end > start:
-            raw_json = candidate_text[start + len(fenced_prefix) : end].strip()
-            return json.loads(raw_json)
-
-    first_brace = candidate_text.find("{")
-    last_brace = candidate_text.rfind("}")
-    if first_brace >= 0 and last_brace > first_brace:
-        raw_json = candidate_text[first_brace : last_brace + 1]
-        return json.loads(raw_json)
-
-    raise AgentClientError("Agent response did not contain valid JSON.")
-
-
-def _extract_text_output(payload: Mapping[str, Any]) -> str:
-    output_text = payload.get("output_text")
-    if isinstance(output_text, str) and output_text.strip():
-        return output_text
-
-    output = payload.get("output")
-    if isinstance(output, list):
-        text_parts: list[str] = []
-        for item in output:
-            if not isinstance(item, Mapping):
-                continue
-            content = item.get("content")
-            if not isinstance(content, list):
-                continue
-            for segment in content:
-                if not isinstance(segment, Mapping):
-                    continue
-                maybe_text = segment.get("text")
-                if isinstance(maybe_text, str):
-                    text_parts.append(maybe_text)
-        if text_parts:
-            return "\n".join(text_parts)
-
-    raise AgentClientError("Unable to read text output from agent response.")
-
-
-class AzureFoundryAgentClient:
     def __init__(self) -> None:
-        if not settings.azure_agent_api_url:
-            raise AgentClientError("Missing AZURE_AGENT_API_URL in environment configuration.")
-        if not settings.azure_agent_model:
-            raise AgentClientError("Missing AZURE_AGENT_MODEL in environment configuration.")
+        self._base_url = settings.ollama_base_url.strip().rstrip("/")
+        if not self._base_url:
+            raise AgentClientError("Missing OLLAMA_BASE_URL in environment configuration.")
+        if not settings.ollama_vision_model.strip():
+            raise AgentClientError("Missing OLLAMA_VISION_MODEL in environment configuration.")
+        if not settings.ollama_reasoning_model.strip():
+            raise AgentClientError("Missing OLLAMA_REASONING_MODEL in environment configuration.")
 
-    async def parse_screenshot(self, image_bytes: bytes, content_type: str) -> dict[str, Any]:
+    async def parse_structured_screenshot(
+        self,
+        image_bytes: bytes,
+        content_type: str,
+        extraction_type: str,
+        context: str = "",
+    ) -> dict[str, Any]:
+        filename = self._structured_extractions.get(extraction_type)
+        if filename is None:
+            raise AgentClientError(f"Unsupported screenshot extraction type: {extraction_type}.")
+
+        prompt_path = get_llm_prompt_path(filename)
+        try:
+            prompt = prompt_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise AgentClientError(f"Unable to read Ollama prompt file: {prompt_path}.") from exc
+
+        if context:
+            prompt = f"{prompt}\n\n{context}"
+
+        return await self._parse_image(
+            image_bytes=image_bytes,
+            prompt=prompt,
+            model=settings.ollama_vision_model,
+        )
+
+    async def merge_json_files(self, combined_json: dict[str, Any]) -> str:
+        prompt_path = get_llm_prompt_path("mlb-data-merge.txt")
+        try:
+            prompt = prompt_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise AgentClientError(f"Unable to read Ollama prompt file: {prompt_path}.") from exc
+
+        prompt = f"{prompt.rstrip()}\n{json.dumps(combined_json, indent=2, ensure_ascii=False)}"
+        return await self._request_chat(prompt=prompt, model=settings.ollama_reasoning_model)
+
+    async def _parse_image(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        model: str,
+    ) -> dict[str, Any]:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        image_url = f"data:{content_type};base64,{image_b64}"
+        content = await self._request_chat(prompt=prompt, model=model, images=[image_b64])
+
+        try:
+            extraction = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise AgentClientError("Ollama response message content was not valid JSON.") from exc
+
+        if not isinstance(extraction, dict):
+            raise AgentClientError("Ollama JSON response must be an object.")
+
+        return extraction
+
+    async def _request_chat(
+        self,
+        prompt: str,
+        model: str,
+        images: list[str] | None = None,
+    ) -> str:
+        message: dict[str, Any] = {
+            "role": "user",
+            "content": prompt,
+        }
+        if images:
+            message["images"] = images
 
         request_payload: dict[str, Any] = {
-            "model": settings.azure_agent_model,
-            "input": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": settings.agent_extraction_prompt},
-                        {"type": "input_image", "image_url": image_url},
-                    ],
-                }
-            ],
-            "response_format": {"type": "json_object"},
+            "model": model,
+            "messages": [message],
+            "format": "json",
+            "think": False,
+            "stream": False,
+            "options": {"temperature": 0},
         }
-
-        params: dict[str, str] = {}
-        if settings.azure_agent_api_version:
-            params["api-version"] = settings.azure_agent_api_version
-
-        headers = {"Content-Type": "application/json"}
-        if settings.azure_agent_api_key:
-            headers["api-key"] = settings.azure_agent_api_key
 
         async with httpx.AsyncClient(timeout=settings.agent_timeout_seconds) as client:
             try:
                 response = await client.post(
-                    settings.azure_agent_api_url,
-                    params=params or None,
-                    headers=headers,
+                    f"{self._base_url}/api/chat",
                     json=request_payload,
                 )
                 response.raise_for_status()
             except httpx.TimeoutException as exc:
-                raise AgentClientError("Agent request timed out.") from exc
+                raise AgentClientError("Ollama inference request timed out.") from exc
             except httpx.HTTPStatusError as exc:
                 raise AgentClientError(
-                    f"Agent request failed with status {exc.response.status_code}."
+                    f"Ollama request failed with status {exc.response.status_code}."
                 ) from exc
             except httpx.HTTPError as exc:
-                raise AgentClientError("Agent request failed due to network error.") from exc
+                raise AgentClientError("Unable to connect to the Ollama server.") from exc
 
-        payload = response.json()
-        if not isinstance(payload, Mapping):
-            raise AgentClientError("Invalid agent response format.")
-
-        text_output = _extract_text_output(payload)
         try:
-            parsed = _extract_json_block(text_output)
-        except (JSONDecodeError, AgentClientError) as exc:
-            raise AgentClientError("Agent output was not valid JSON.") from exc
-        if not isinstance(parsed, dict):
-            raise AgentClientError("Agent output JSON root must be an object.")
+            payload = response.json()
+        except ValueError as exc:
+            raise AgentClientError("Ollama returned an invalid JSON response.") from exc
 
-        return parsed
+        if not isinstance(payload, Mapping):
+            raise AgentClientError("Ollama returned an invalid response format.")
+
+        message = payload.get("message")
+        if not isinstance(message, Mapping):
+            raise AgentClientError("Ollama response did not contain a message.")
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            diagnostics = []
+            done_reason = payload.get("done_reason")
+            if done_reason:
+                diagnostics.append(f"done_reason={done_reason}")
+            thinking = message.get("thinking")
+            diagnostics.append(
+                f"thinking_present={isinstance(thinking, str) and bool(thinking.strip())}"
+            )
+            eval_count = payload.get("eval_count")
+            if isinstance(eval_count, int):
+                diagnostics.append(f"eval_count={eval_count}")
+            detail = f" ({', '.join(diagnostics)})" if diagnostics else ""
+            raise AgentClientError(f"Ollama response did not contain message content{detail}.")
+        return content

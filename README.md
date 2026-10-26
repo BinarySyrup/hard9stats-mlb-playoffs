@@ -1,218 +1,58 @@
-# Hard9Stats MLB Playoffs
+# Hard 9 Stats - MLB Playoffs
 
-Hard 9 Stats MLB Playoffs data in ingestion and report generation.
+Hard 9 Stats is a sports-market stats analytics report for MLB postseason games. It provides insights into the odds, scores, and schedules of games, helping fans and analysts make informed decisions.
 
-## API Endpoints
+[Hard 9 Stats Website](https://www.hard9stats.com)
 
-- `GET /health`
-- `POST /ingest/screenshot`
-- `POST /reports/{series_type}/merge-json`
-- `POST /reports/{series_type}/generate-html`
-- `GET /reports/{series_type}/status`
+## Architecture
 
-## Directory Convention (Series Type)
+![Hard 9 Stats Architecture](docs/images/architecture-v1.png)
 
-Use a `series_type` path variable (for example `WCS`, `LDS`, `LCS`, `WS`) to separate ingested and report artifacts.
+The static diagram shows the architecture of the Hard 9 Stats service, which includes the API runtime, validation and settings, screenshot uploads, Ollama client, vision model, reasoning model, and API test suite.
 
-Series type definitions:
+Detailed architecture is here: [architecture.md](docs/architecture.md)
 
-- `WCS` = `Wild Card Series`
-- `LDS` = `League Division Series`
-- `LCS` = `League Championship Series`
-- `WS` = `World Series`
+## Tech Stack
 
-Recommended structure:
+| Area | Technology |
+| --- | --- |
+| API runtime | Python 3.14; FastAPI 0.157.0; Uvicorn 0.54.0 |
+| Validation and settings | Pydantic 2.14.1; Pydantic Settings 2.16.1 |
+| Screenshot uploads | `python-multipart` 0.0.32 |
+| Ollama client | Ollama `/api/chat` via HTTPX 0.28.1; server is configured separately |
+| Vision model | `qwen2.5vl:7b` by default |
+| Reasoning model | `gemma4:12b` by default |
+| API test suite | Pytest 9.1.1; FastAPI TestClient; isolated temporary directories; mocked Ollama calls |
 
-- `data/ingested/odds/<SERIES_TYPE>/`
-- `data/ingested/schedules/<SERIES_TYPE>/`
-- `data/ingested/scores/<SERIES_TYPE>/`
-- `data/reports/<SERIES_TYPE>/`
+## Documentation
 
-## Git Tracking for Data Folders
+Start with the [documentation index](docs/index.md) for setup, configuration, API usage, report workflow, and deployment. The interactive API reference is available at `/docs` when the service is running.
 
-The repository uses top-level sentinel files to keep data directory structure in git while ignoring runtime data files:
+## How it works
 
-- `data/ingested/.keep`
-- `data/reports/.keep`
+Screenshot ingestion extracts odds, scores, or schedules into JSON. User captures odds screenshots from sportsbook websites such as DraftKings and schedules & scores screenshots from sports websites such as ESPN. See sample files in [docs/samples](docs/samples).
 
-Git behavior:
+Report merging combines those JSON inputs into a series report, and HTML generation renders the merged report.
 
-- Files under `data/ingested/` are ignored by default.
-- Files under `data/reports/` are ignored by default.
-- Files under `data/reports/assets/` are tracked (for example logos/images).
+The service uses two local Ollama models:
 
-## Setup
+- Vision: `qwen2.5vl:7b` by default, for screenshot extraction.
+- Reasoning: `gemma4:12b` by default, for merging report JSON.
 
-1. Create and activate a virtual environment.
-2. Install dependencies from `pyproject.toml`:
+Configure them with `OLLAMA_VISION_MODEL` and `OLLAMA_REASONING_MODEL`. Both use the server URL in `OLLAMA_BASE_URL`. See `.env.example` and the [Quickstart](docs/quickstart.md) to install and configure Ollama.
 
-```bash
-pip install -e .
-```
+## API at a glance
 
-If you are on Python `3.14`, keep dependencies unpinned in `pyproject.toml` so pip can choose compatible wheels for your interpreter.
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Check that the service process is responding. |
+| `POST` | `/ingest/{series_type}/{data_type}/` | Extract screenshot data and save it to the matching series input folder. |
+| `POST` | `/reports/{series_type}/merge-json` | Merge the series' ingested JSON files. |
+| `POST` | `/reports/{series_type}/generate-html` | Generate HTML from the merged report. |
+| `GET` | `/reports/{series_type}/status` | Check merged JSON and generated HTML artifacts. |
 
-3. Copy `.env.example` to `.env` and populate agent settings:
+For screenshot ingestion, `series_type` is `WCS`, `LDS`, `LCS`, or `WS`; `data_type` is `odds`, `scores`, or `schedules`. Send the screenshot as the `image` multipart field. The former `/ingest/screenshot` endpoint has been removed. The `/reports` endpoint paths are unchanged. The [API reference](docs/api-reference.md) lists series aliases and request and response details.
 
-- `AZURE_AGENT_API_URL`
-- `AZURE_AGENT_API_KEY`
-- `AZURE_AGENT_MODEL`
-- Optional: `AZURE_AGENT_API_VERSION`
+Ingested files are stored under `data/ingested/{series_type}/{data_type}/`. Merged JSON and generated HTML are stored under `data/reports/{series_type}/`.
 
-## Run
-
-```bash
-uvicorn app.main:app --reload
-```
-
-## Ingestion Endpoint
-
-`POST /ingest/screenshot` accepts a screenshot image, sends it to an Azure AI Foundry-compatible agent endpoint, and stores the parsed JSON result in `data/ingested/`.
-
-Example:
-
-```bash
-curl -X POST "http://127.0.0.1:8000/ingest/screenshot" \
-  -H "accept: application/json" \
-  -H "Content-Type: multipart/form-data" \
-  -F "image=@./sample-screenshot.png"
-```
-
-Saved ingestion files contain:
-
-- `request_id`
-- `created_at`
-- `source_image_name`
-- `data`
-- `warnings`
-- `confidence`
-- `agent_metadata`
-
-## Report Generation (Two-Step API Flow)
-
-### Step 1: Merge schedules + scores + odds into one report JSON
-
-Endpoint: `POST /reports/{series_type}/merge-json`
-
-Behavior:
-
-- No request body is required.
-- The API automatically reads from:
-  - `data/ingested/odds/<SERIES_TYPE>/`
-  - `data/ingested/scores/<SERIES_TYPE>/`
-  - `data/ingested/schedules/<SERIES_TYPE>/` (optional; used if directory exists)
-- Output is always written to:
-  - `data/reports/<SERIES_TYPE>/report-merged.json`
-- Existing `.json` files in `data/reports/<SERIES_TYPE>/` are removed first, so only one merged JSON file is stored per series type.
-
-Request example:
-
-```bash
-curl -X POST "http://127.0.0.1:8000/reports/WCS/merge-json" \
-  -H "accept: application/json"
-```
-
-### Step 2: Generate HTML from merged report JSON
-
-Endpoint: `POST /reports/{series_type}/generate-html`
-
-Behavior:
-
-- No request body is required.
-- The API reads from:
-  - `data/reports/<SERIES_TYPE>/report-merged.json`
-- Output is always written to:
-  - `data/reports/<SERIES_TYPE>/report-<report_date>.html`
-
-Request example:
-
-```bash
-curl -X POST "http://127.0.0.1:8000/reports/WCS/generate-html" \
-  -H "accept: application/json"
-```
-
-Response includes:
-
-- `series_type`
-- `merged_json_path`
-- `html_report_path`
-- `report_date`
-- `games_count`
-
-## API Spec: `POST /reports/{series_type}/merge-json`
-
-Path parameter:
-
-- `series_type` (string): `WCS`, `LDS`, `LCS`, or `WS`.
-
-Request body:
-
-- None.
-
-Success response (`200`):
-
-- `series_type` (string)
-- `report_date` (string, `YYYY-MM-DD`, generation date)
-- `games_count` (integer)
-- `merged_json_path` (string)
-
-Error responses:
-
-- `404` when required input directories (`odds` or `scores`) do not exist for the series type.
-- `422` for invalid path parameter shape.
-
-## API Spec: `POST /reports/{series_type}/generate-html`
-
-Path parameter:
-
-- `series_type` (string): `WCS`, `LDS`, `LCS`, or `WS`.
-
-Request body:
-
-- None.
-
-Success response (`200`):
-
-- `series_type` (string)
-- `report_date` (string, `YYYY-MM-DD`, generation date)
-- `games_count` (integer)
-- `merged_json_path` (string)
-- `html_report_path` (string)
-
-Error responses:
-
-- `404` when merged JSON does not exist for the series type.
-- `422` for invalid path parameter shape.
-
-
-## API Spec: `GET /reports/{series_type}/status`
-
-Path parameter:
-
-- `series_type` (string): `WCS`, `LDS`, `LCS`, or `WS`.
-
-Behavior:
-
-- Checks `data/reports/<SERIES_TYPE>/report-merged.json`.
-- Finds the most recently modified file matching `data/reports/<SERIES_TYPE>/report-*.html`.
-
-Success response (`200`):
-
-- `series_type` (string)
-- `merged_json_exists` (boolean)
-- `merged_json_path` (string)
-- `merged_json_modified_at` (string | null, ISO-8601)
-- `latest_html_exists` (boolean)
-- `latest_html_path` (string | null)
-- `latest_html_modified_at` (string | null, ISO-8601)
-
-Example:
-
-```bash
-curl -X GET "http://127.0.0.1:8000/reports/WCS/status" \
-  -H "accept: application/json"
-```
-
-
-
-
+Odds extraction JSON stores game objects in screenshot order in the top-level `games` array, alongside `warnings` and `confidence`. Each team's moneyline price is numeric `moneyline.odds`; trends are derived from the paired prices, with the lower numeric price marked Favorite and missing or equal prices marked `TBD`. Each game's total is stored once at `odds.total`, with `line`, `over_odds`, and `under_odds`, separate from the away and home team markets. Score and schedule extraction also stores `screenshot_date` when visible, and places postseason game number and league in `series.game` and `series.league`.
