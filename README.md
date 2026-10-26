@@ -16,8 +16,8 @@ Detailed architecture is here: [architecture.md](docs/architecture.md)
 
 | Area | Technology |
 | --- | --- |
-| API runtime | Python 3.14; FastAPI 0.141.1; Uvicorn 0.54.0 |
-| Validation and settings | Pydantic 2.13.5; Pydantic Settings 2.15.0 |
+| API runtime | Python 3.14; FastAPI 0.157.0; Uvicorn 0.54.0 |
+| Validation and settings | Pydantic 2.14.1; Pydantic Settings 2.16.1 |
 | Screenshot uploads | `python-multipart` 0.0.32 |
 | Ollama client | Ollama `/api/chat` via HTTPX 0.28.1; server is configured separately |
 | Vision model | `qwen2.5vl:7b` by default |
